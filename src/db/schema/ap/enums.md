@@ -65,6 +65,9 @@
 ### structureEventKind
 `pgEnum('structure_event_kind', ['create', 'update', 'delete'])` — the mutation recorded in `ap_structure_event`, the append-only accountability log for manual structure intel.
 
+### systemNoteEventKind
+`pgEnum('system_note_event_kind', ['create', 'update', 'delete'])` — the mutation recorded in `ap_system_note_event`, the append-only accountability log for global system notes.
+
 ### tagScheme
 `pgEnum('tag_scheme', ['none', 'abc', '0121'])` — the auto-tagging scheme a map runs (`ap_map.tag_scheme`, default `none`). `abc` = per-WH-class sequential letters; `0121` = positional chain numbering off the Home system. Adding a third scheme is additive (one `ALTER TYPE … ADD VALUE` + a strategy module + a `registry.ts` line).
 

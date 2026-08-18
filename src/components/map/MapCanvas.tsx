@@ -38,6 +38,7 @@ import type {
   SignatureIndicatorPrefs,
   SigSearchFilters,
   StructureIntel,
+  SystemNote,
 } from '@/types';
 import type { SystemStatsSummary } from '@/lib/map/stats';
 import type { SystemIntelSummary } from '@/lib/map/intel';
@@ -82,6 +83,11 @@ import {
   deleteStructureOnServer,
   updateStructureOnServer,
 } from '@/lib/structures/client';
+import {
+  createSystemNoteOnServer,
+  deleteSystemNoteOnServer,
+  updateSystemNoteOnServer,
+} from '@/lib/system-notes/client';
 import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import { useMapSubscription, useRealtimeEvents, useReconnectResync } from '@/lib/realtime/useRealtime';
 import { RoutePlannerModule } from '@/components/sidebar/RoutePlannerModule';
@@ -93,6 +99,7 @@ import { TheraModule } from '@/components/sidebar/TheraModule';
 import { IntelModule } from '@/components/sidebar/IntelModule';
 import { StructureModule } from '@/components/sidebar/StructureModule';
 import type { StructureFormValues } from '@/components/sidebar/StructureFormDialog';
+import { SystemNotesModule } from '@/components/sidebar/SystemNotesModule';
 import { InspectorModule, type SelectionRef } from '@/components/sidebar/InspectorModule';
 import {
   SignatureModule,
@@ -271,6 +278,7 @@ export function MapCanvas({
   stats: initialStats,
   intel: initialIntel,
   structures: initialStructures,
+  systemNotes: initialSystemNotes,
   settings,
   canManage,
   capabilities,
@@ -288,6 +296,7 @@ export function MapCanvas({
   stats: Record<number, SystemStatsSummary>;
   intel: Record<number, SystemIntelSummary>;
   structures: Record<number, StructureIntel[]>;
+  systemNotes: Record<number, SystemNote[]>;
   settings: MapSettings;
   /** Whether the viewer can manage this map (derived `canManageMap`) — reveals settings/webhooks/audit. */
   canManage: boolean;
@@ -384,13 +393,15 @@ export function MapCanvas({
   // reconciler would fight the click handlers and loop. Box drag is the only
   // selection source we must adopt from xyflow.
   const boxSelecting = useRef(false);
-  // Read-side per-system data (intel / activity stats / structure intel) is
-  // server-rendered for the systems present at page load, then held as state so
-  // systems added live can be backfilled (see the effect below) without a reload.
-  // Structure intel is also updated in place by our own CRUD callbacks.
+  // Read-side per-system data (intel / activity stats / structure intel /
+  // global system notes) is server-rendered for the systems present at page
+  // load, then held as state so systems added live can be backfilled (see the
+  // effect below) without a reload. Structure intel and system notes are also
+  // updated in place by our own CRUD callbacks.
   const [intel, setIntel] = useState(initialIntel);
   const [stats, setStats] = useState(initialStats);
   const [structures, setStructures] = useState(initialStructures);
+  const [systemNotes, setSystemNotes] = useState(initialSystemNotes);
 
   // EVE solar-system ids whose read-side data has been loaded or is in flight.
   // Seeded from the load-time intel (one entry per initially-rendered system).
@@ -417,6 +428,7 @@ export function MapCanvas({
       setIntel((prev) => ({ ...prev, ...result.data.intel }));
       setStats((prev) => ({ ...prev, ...result.data.stats }));
       setStructures((prev) => ({ ...prev, ...result.data.structures }));
+      setSystemNotes((prev) => ({ ...prev, ...result.data.systemNotes }));
     });
   }, [viewData.systems, data.map.id]);
 
@@ -1888,6 +1900,53 @@ export function MapCanvas({
     [selectedSystem],
   );
 
+  // ---- Global system-note callbacks ---------------------------------------
+  //
+  // Same plain-REST shape as structures. Lists stay newest-first, matching the
+  // read-side order.
+  const sortNewestFirst = (a: SystemNote, b: SystemNote) =>
+    b.createdAt.localeCompare(a.createdAt);
+
+  const onSystemNoteCreate = useCallback(
+    async (body: string) => {
+      if (!selectedSystem) return;
+      const systemId = selectedSystem.systemId;
+      const result = await createSystemNoteOnServer({ systemId, body });
+      if (!result.ok) return;
+      setSystemNotes((prev) => ({
+        ...prev,
+        [systemId]: [result.data, ...(prev[systemId] ?? [])].sort(sortNewestFirst),
+      }));
+    },
+    [selectedSystem],
+  );
+
+  const onSystemNotePatch = useCallback(async (noteId: string, body: string) => {
+    const result = await updateSystemNoteOnServer({ noteId, patch: { body } });
+    if (!result.ok) return;
+    const updated = result.data;
+    setSystemNotes((prev) => ({
+      ...prev,
+      [updated.systemId]: (prev[updated.systemId] ?? []).map((n) =>
+        n.id === noteId ? updated : n,
+      ),
+    }));
+  }, []);
+
+  const onSystemNoteDelete = useCallback(
+    async (noteId: string) => {
+      if (!selectedSystem) return;
+      const systemId = selectedSystem.systemId;
+      const result = await deleteSystemNoteOnServer({ noteId });
+      if (!result.ok) return;
+      setSystemNotes((prev) => ({
+        ...prev,
+        [systemId]: (prev[systemId] ?? []).filter((n) => n.id !== noteId),
+      }));
+    },
+    [selectedSystem],
+  );
+
   // Panels the user hasn't hidden, in registry order. Order is cosmetic — the
   // grid positions by each item's `i`, not by child order.
   // One grid cell per group in the active breakpoint whose members aren't all
@@ -2100,6 +2159,16 @@ export function MapCanvas({
             onCreate={onStructureCreate}
             onPatch={onStructurePatch}
             onDelete={onStructureDelete}
+          />
+        );
+      case 'systemNotes':
+        return (
+          <SystemNotesModule
+            system={selectedSystem}
+            notes={selectedSystem ? (systemNotes[selectedSystem.systemId] ?? []) : []}
+            onCreate={onSystemNoteCreate}
+            onPatch={onSystemNotePatch}
+            onDelete={onSystemNoteDelete}
           />
         );
       case 'killStats':

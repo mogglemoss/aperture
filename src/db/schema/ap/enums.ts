@@ -193,6 +193,19 @@ export const roleSource = pgEnum('role_source', ['builtin', 'corp_title', 'exter
 export const structureEventKind = pgEnum('structure_event_kind', ['create', 'update', 'delete']);
 
 /**
+ * The mutation recorded in `ap_system_note_event` — the append-only
+ * accountability log for global system notes. Notes are deployment-global and
+ * editable by any authenticated user, so every create/update/delete is stamped
+ * with the acting character. (Notes have no `map_id` and therefore cannot live
+ * in `ap_map_event`; this is their dedicated, single-source history.)
+ */
+export const systemNoteEventKind = pgEnum('system_note_event_kind', [
+  'create',
+  'update',
+  'delete',
+]);
+
+/**
  * The auto-tagging scheme a map runs (`ap_map.tag_scheme`).
  * - `none` — no auto-tagging; the `tag` column is manual-only.
  * - `abc` — per-WH-class sequential letters (A, B, C, … per class).
