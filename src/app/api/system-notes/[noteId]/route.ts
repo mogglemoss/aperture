@@ -24,7 +24,7 @@ export const runtime = 'nodejs';
 const updateSystemNoteBodySchema = z
   .object({
     body: z.string().min(1).max(2000).optional(),
-    category: z.enum(['intel', 'journal', 'pve', 'logistics', 'warning']).nullable().optional(),
+    category: z.enum(['intel', 'journal', 'bounty', 'logistics', 'warning']).nullable().optional(),
     locked: z.boolean().optional(),
   })
   .refine((patch) => Object.keys(patch).length > 0, { message: 'Empty patch.' });

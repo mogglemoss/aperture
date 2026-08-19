@@ -69,7 +69,7 @@
 `pgEnum('system_note_event_kind', ['create', 'update', 'delete'])` — the mutation recorded in `ap_system_note_event`, the append-only accountability log for global system notes.
 
 ### systemNoteCategory
-`pgEnum('system_note_category', ['intel', 'journal', 'pve', 'logistics', 'warning'])` — the organizational category of a global system note (`ap_system_note.category`, nullable), rendered as a colored chip and filter row in the System Notes panel. Deliberately small fixed vocabulary; adding a value is additive (`ALTER TYPE … ADD VALUE`). Added migration 0068.
+`pgEnum('system_note_category', ['intel', 'journal', 'bounty', 'logistics', 'warning'])` — the organizational category of a global system note (`ap_system_note.category`, nullable), rendered as a colored chip and filter row in the System Notes panel. Deliberately small fixed vocabulary; adding a value is additive (`ALTER TYPE … ADD VALUE`). (migrations 0068, 0069)
 
 ### tagScheme
 `pgEnum('tag_scheme', ['none', 'abc', '0121'])` — the auto-tagging scheme a map runs (`ap_map.tag_scheme`, default `none`). `abc` = per-WH-class sequential letters; `0121` = positional chain numbering off the Home system. Adding a third scheme is additive (one `ALTER TYPE … ADD VALUE` + a strategy module + a `registry.ts` line).

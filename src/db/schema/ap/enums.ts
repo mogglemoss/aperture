@@ -214,7 +214,7 @@ export const systemNoteEventKind = pgEnum('system_note_event_kind', [
 export const systemNoteCategory = pgEnum('system_note_category', [
   'intel',
   'journal',
-  'pve',
+  'bounty',
   'logistics',
   'warning',
 ]);

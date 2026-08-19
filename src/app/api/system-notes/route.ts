@@ -21,7 +21,7 @@ export const runtime = 'nodejs';
 const createSystemNoteBodySchema = z.object({
   systemId: z.number().int().positive(),
   body: z.string().min(1).max(2000),
-  category: z.enum(['intel', 'journal', 'pve', 'logistics', 'warning']).nullable().optional(),
+  category: z.enum(['intel', 'journal', 'bounty', 'logistics', 'warning']).nullable().optional(),
   locked: z.boolean().optional(),
 });
 

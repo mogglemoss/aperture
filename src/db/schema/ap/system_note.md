@@ -10,7 +10,7 @@
 - `id` — `bigserial` PK.
 - `system_id` — `integer` FK → `universe_system.id` `ON DELETE RESTRICT` (a static system in use must not be deletable).
 - `body` — `text`, not null. The free-text note (rendered as markdown).
-- `category` — `system_note_category` enum (`intel` | `journal` | `pve` | `logistics` | `warning`), nullable. Null ⇒ uncategorized (no chip). (migration 0068)
+- `category` — `system_note_category` enum (`intel` | `journal` | `bounty` | `logistics` | `warning`), nullable. Null ⇒ uncategorized (no chip). (migrations 0068, 0069)
 - `locked` — `boolean`, default `false`. A locked note refuses edit/delete server-side until unlocked; any authenticated user may unlock (accident guard rail — the audit log covers malice). (migration 0068)
 - `created_by_character_id` / `last_edited_by_character_id` — `bigint` FK → `ap_character.id` `ON DELETE SET NULL` (audit; never cascade-wipe intel when a character is erased). Denormalized attribution so the panel shows creator + last editor without reading the event log. (migration 0068 for the editor column)
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.

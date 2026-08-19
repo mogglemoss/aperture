@@ -37,7 +37,7 @@ export type SystemNoteFormValues = {
 export const NOTE_CATEGORY_STYLES: Record<SystemNoteCategory, string> = {
   intel: 'bg-sky-500/15 text-sky-500 ring-sky-500/30',
   journal: 'bg-violet-500/15 text-violet-500 ring-violet-500/30',
-  pve: 'bg-emerald-500/15 text-emerald-500 ring-emerald-500/30',
+  bounty: 'bg-emerald-500/15 text-emerald-500 ring-emerald-500/30',
   logistics: 'bg-amber-500/15 text-amber-500 ring-amber-500/30',
   warning: 'bg-red-500/15 text-red-500 ring-red-500/30',
 };
