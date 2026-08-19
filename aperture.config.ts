@@ -239,6 +239,24 @@ export const apertureConfig = {
   ],
 
   /**
+   * The global system-note category vocabulary — the chips offered in the
+   * System Notes panel. Deployment-customizable: edit this list (and redeploy)
+   * to rename, add, or remove categories; the DB stores the bare `key` as
+   * text, so existing rows keep their value and a key no longer listed here
+   * renders as a neutral gray chip rather than breaking. `color` must be one
+   * of the fixed chip-palette keys in `SystemNotesModule` (`sky`, `violet`,
+   * `emerald`, `amber`, `red`, `orange`, `blue`, `cyan`, `pink`, `gray`) — a
+   * typo fails the type-check at the palette lookup.
+   */
+  SYSTEM_NOTE_CATEGORIES: [
+    { key: 'intel', color: 'sky' },
+    { key: 'journal', color: 'violet' },
+    { key: 'bounty', color: 'emerald' },
+    { key: 'logistics', color: 'amber' },
+    { key: 'warning', color: 'red' },
+  ],
+
+  /**
    * `character-cleanup` cron cadence. Drives both kick-expiry sweeps (5-minute
    * clearing latency on minimum 5-minute kicks is acceptable) and the authz
    * resync pass that throttles by `authz_synced_at`.

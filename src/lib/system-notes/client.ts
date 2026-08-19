@@ -1,5 +1,5 @@
 import { requestJson, type FetchResult } from '@/lib/http/fetchJson';
-import type { SystemNote, SystemNoteCategory, SystemNoteSearchResult } from '@/types';
+import type { SystemNote, SystemNoteSearchResult } from '@/types';
 
 /**
  * Browser-side fetch wrappers for the global system-note REST routes. Unlike
@@ -11,13 +11,13 @@ import type { SystemNote, SystemNoteCategory, SystemNoteSearchResult } from '@/t
 export type CreateSystemNoteBody = {
   systemId: number;
   body: string;
-  category?: SystemNoteCategory | null;
+  category?: string | null;
   locked?: boolean;
 };
 
 export type UpdateSystemNoteBody = {
   body?: string;
-  category?: SystemNoteCategory | null;
+  category?: string | null;
   locked?: boolean;
 };
 

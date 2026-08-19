@@ -22,6 +22,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `SSO_TOKEN_REFRESH_BUFFER_S` — refresh the access token this many seconds before expiry.
 - `LOGIN_REGATE_INTERVAL_S` — how often the `jwt` callback re-checks login eligibility for an already-issued session (reads cached corp/alliance from `ap_character`, no ESI); on denial the session is invalidated. Bounds how long a pilot who left the owning corp/alliance keeps app access on a restricted deployment.
 - `ESI_SCOPES` — default scope list requested at login.
+- `SYSTEM_NOTE_CATEGORIES` — the deployment-customizable global system-note category vocabulary (`{ key, color }[]`; `color` must be a chip-palette key in `SystemNotesModule`). The DB stores the bare key as text; a key removed from this list renders as a neutral gray chip.
 
 **Third-party integrations (read-side)**
 - `INTEGRATION_REQUEST_TIMEOUT_MS`, `INTEGRATION_USER_AGENT` — shared timeout + UA for zKillboard / EVE-Scout / GitHub.

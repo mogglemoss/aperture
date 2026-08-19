@@ -2,7 +2,7 @@ import 'server-only';
 import { eq, type InferInsertModel } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apSystemNote, apSystemNoteEvent } from '@/db/schema';
-import type { ApSystemNote, SystemNoteCategory } from '@/types';
+import type { ApSystemNote } from '@/types';
 
 /**
  * Global system-note mutations. Notes are deployment-global manual intel with
@@ -24,14 +24,14 @@ import type { ApSystemNote, SystemNoteCategory } from '@/types';
 export type CreateSystemNoteInput = {
   systemId: number;
   body: string;
-  category?: SystemNoteCategory | null;
+  category?: string | null;
   locked?: boolean;
   characterId: bigint | null;
 };
 
 export type UpdateSystemNotePatch = {
   body?: string;
-  category?: SystemNoteCategory | null;
+  category?: string | null;
   locked?: boolean;
 };
 

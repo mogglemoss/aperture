@@ -15,13 +15,14 @@
 | onJumpToSystem | (systemId: number) => void | yes | Focus a system on the current map (from a browser result) |
 
 ### Renders
-A `Card` with a header search button (opens the notes browser) and — when a system is selected — an "Add" button; then an optional filter row of category chips (only categories present in the list, plus "All"), and the note list. Each note row shows its category chip (if any), the body rendered as markdown via `NoteContent` (GFM + colour tags), an attribution line (author · age, plus "edited by X" when a later editor differs), and lock / edit / delete icon buttons.
+A `Card` with a header search button (opens the notes browser) and — when a system is selected — an "Add" button; then an optional filter row of category chips (only categories present in the list, plus "All"; config order first, then any keys the current config no longer lists), and the note list. Each note row shows its category chip (if any), the body rendered as markdown via `NoteContent` (GFM + colour tags), an attribution line (author · age, plus "edited by X" when a later editor differs), and lock / edit / delete icon buttons.
 
 ### Behaviour & Interactions
 - Empty states: "Select a system…" (no system) / "No notes recorded." (none) / "No notes in this category." (filter excludes all).
 - The lock button toggles `locked` via `onPatch(id, { locked })`; edit and delete are disabled while locked (the server also rejects them with a 409).
 - Clicking a filter chip filters to that category; clicking it again (or "All") clears the filter. Filter state is local and per-panel.
-- "Add" / edit open a dialog with a category `Select` (None + the five categories), a 2000-char textarea (help text lists the markdown support and colour-tag names), and a Locked checkbox (same idiom as the map-note inspector) — so a note can be created locked or locked/unlocked while editing.
+- "Add" / edit open a dialog with a category `Select` (None + the configured vocabulary), a 2000-char textarea (help text lists the markdown support and colour-tag names), and a Locked checkbox (same idiom as the map-note inspector) — so a note can be created locked or locked/unlocked while editing.
+- The category vocabulary comes from `apertureConfig.SYSTEM_NOTE_CATEGORIES` (`{ key, color }[]`); chip classes come from a fixed, closed palette record (full literal class strings so Tailwind keeps every colour available). A stored key absent from the current config renders as a neutral gray chip and still filters.
 - A browser result jump closes the browser and calls `onJumpToSystem`.
 - **Not realtime-synced** — another user's note edits appear on the next page load (notes are deployment-global, not map-scoped).
 
@@ -36,7 +37,7 @@ A `Card` with a header search button (opens the notes browser) and — when a sy
 
 ### Exports
 - `SystemNoteFormValues` — `{ body, category, locked }` dialog output.
-- `NOTE_CATEGORIES` / `NOTE_CATEGORY_STYLES` / `CategoryChip` — the category vocabulary, chip styling, and chip component (shared with the browser dialog).
+- `NOTE_CATEGORIES` / `CategoryChip` — the configured vocabulary and the chip component (shared with the browser dialog).
 
 ### Local State
-- `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode), `browserOpen: boolean`, `filter: SystemNoteCategory | null`.
+- `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode), `browserOpen: boolean`, `filter: string | null`.

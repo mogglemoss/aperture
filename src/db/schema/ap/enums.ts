@@ -206,20 +206,6 @@ export const systemNoteEventKind = pgEnum('system_note_event_kind', [
 ]);
 
 /**
- * The organizational category of a global system note (`ap_system_note.category`),
- * rendered as a colored chip and a filter row in the System Notes panel. A
- * deliberately small, fixed vocabulary — free-form labels rot in a shared
- * journal. Null category ⇒ uncategorized (no chip).
- */
-export const systemNoteCategory = pgEnum('system_note_category', [
-  'intel',
-  'journal',
-  'bounty',
-  'logistics',
-  'warning',
-]);
-
-/**
  * The auto-tagging scheme a map runs (`ap_map.tag_scheme`).
  * - `none` — no auto-tagging; the `tag` column is manual-only.
  * - `abc` — per-WH-class sequential letters (A, B, C, … per class).

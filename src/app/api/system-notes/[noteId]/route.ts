@@ -11,6 +11,7 @@ import {
 import { withAuthorName } from '@/lib/system-notes/read';
 import { parseBigInt } from '../../map/utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
+import { apertureConfig } from '../../../../../aperture.config';
 
 /**
  * PATCH / DELETE /api/system-notes/[noteId] — edit or remove a global
@@ -21,10 +22,16 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 export const runtime = 'nodejs';
 
+// The category vocabulary is deployment config, not a DB enum.
+const categoryKeys = apertureConfig.SYSTEM_NOTE_CATEGORIES.map((c) => c.key) as [
+  string,
+  ...string[],
+];
+
 const updateSystemNoteBodySchema = z
   .object({
     body: z.string().min(1).max(2000).optional(),
-    category: z.enum(['intel', 'journal', 'bounty', 'logistics', 'warning']).nullable().optional(),
+    category: z.enum(categoryKeys).nullable().optional(),
     locked: z.boolean().optional(),
   })
   .refine((patch) => Object.keys(patch).length > 0, { message: 'Empty patch.' });

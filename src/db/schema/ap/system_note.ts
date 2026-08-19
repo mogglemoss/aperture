@@ -10,7 +10,6 @@ import {
 } from 'drizzle-orm/pg-core';
 import { universeSystem } from '../universe/geography';
 import { apCharacter } from './character';
-import { systemNoteCategory } from './enums';
 
 // Global system notes: free-text intel entries on a universe system.
 // System-scoped and deployment-global (shared across maps) — unlike
@@ -26,8 +25,11 @@ export const apSystemNote = pgTable(
       .notNull()
       .references(() => universeSystem.id, { onDelete: 'restrict' }),
     body: text('body').notNull(),
-    // Null ⇒ uncategorized (no chip in the panel).
-    category: systemNoteCategory('category'),
+    // Null ⇒ uncategorized (no chip in the panel). Plain text, not a pgEnum:
+    // the vocabulary is deployment config (`apertureConfig.SYSTEM_NOTE_CATEGORIES`),
+    // validated at the API boundary; a value absent from the current config
+    // renders as a neutral chip.
+    category: text('category'),
     // A locked note refuses edit/delete server-side until unlocked. Any
     // authenticated user may unlock — a guard rail against accidents, not
     // malice; the audit log covers malice.

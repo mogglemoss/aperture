@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { asc, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apCharacter, apSystemNote, universeSystem } from '@/db/schema';
-import type { ApSystemNote, SystemNoteCategory } from '@/types';
+import type { ApSystemNote } from '@/types';
 
 /** A global system-note row shaped for the sidebar (ids as strings, names resolved). */
 export type SystemNote = {
@@ -11,7 +11,7 @@ export type SystemNote = {
   systemId: number;
   body: string;
   /** Organizational chip; null ⇒ uncategorized. */
-  category: SystemNoteCategory | null;
+  category: string | null;
   /** A locked note refuses edit/delete server-side until unlocked. */
   locked: boolean;
   /** `ap_character.name` of the author — light at-a-glance accountability. Null if erased. */
@@ -43,7 +43,7 @@ type NoteRow = {
   id: bigint;
   systemId: number;
   body: string;
-  category: SystemNoteCategory | null;
+  category: string | null;
   locked: boolean;
   createdByName: string | null;
   lastEditedByName: string | null;

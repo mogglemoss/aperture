@@ -6,6 +6,7 @@ import { requireSystemNoteMutate } from '@/lib/system-notes/guard';
 import { createSystemNote } from '@/lib/system-notes/mutations';
 import { withAuthorName } from '@/lib/system-notes/read';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
+import { apertureConfig } from '../../../../aperture.config';
 
 /**
  * POST /api/system-notes — create a global system-note row.
@@ -18,10 +19,16 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 
 export const runtime = 'nodejs';
 
+// The category vocabulary is deployment config, not a DB enum.
+const categoryKeys = apertureConfig.SYSTEM_NOTE_CATEGORIES.map((c) => c.key) as [
+  string,
+  ...string[],
+];
+
 const createSystemNoteBodySchema = z.object({
   systemId: z.number().int().positive(),
   body: z.string().min(1).max(2000),
-  category: z.enum(['intel', 'journal', 'bounty', 'logistics', 'warning']).nullable().optional(),
+  category: z.enum(categoryKeys).nullable().optional(),
   locked: z.boolean().optional(),
 });
 

@@ -2,6 +2,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 // Type-only (erased at compile) — `Layout` is RGL's `readonly LayoutItem[]`. Safe to
 // pull into this server-imported barrel; no runtime client/server coupling.
 import type { Layout } from 'react-grid-layout';
+import type { apertureConfig } from '../../aperture.config';
 import type { SignatureActivity } from '@/lib/map/siteActivity';
 import type {
   apAccessGrant,
@@ -64,7 +65,6 @@ import type {
   sharePresenceMode,
   signatureGroupKey,
   structureEventKind,
-  systemNoteCategory,
   systemNoteEventKind,
   tagScheme,
   whJumpMass,
@@ -247,7 +247,6 @@ export type SharePresenceMode = (typeof sharePresenceMode.enumValues)[number];
 export type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 export type StructureEventKind = (typeof structureEventKind.enumValues)[number];
 export type SystemNoteEventKind = (typeof systemNoteEventKind.enumValues)[number];
-export type SystemNoteCategory = (typeof systemNoteCategory.enumValues)[number];
 export type TagScheme = (typeof tagScheme.enumValues)[number];
 export type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 
@@ -539,6 +538,11 @@ export type { StructureIntel, UpwellStructureType } from '@/lib/structures/read'
 
 // Read-side global system-note view-models (computed in src/lib/system-notes/read.ts).
 export type { SystemNote, SystemNoteSearchResult } from '@/lib/system-notes/read';
+
+// One entry of the deployment-configurable system-note category vocabulary
+// (`apertureConfig.SYSTEM_NOTE_CATEGORIES`). The stored column is plain text;
+// this shapes the config entries, not a DB enum.
+export type SystemNoteCategoryDef = (typeof apertureConfig.SYSTEM_NOTE_CATEGORIES)[number];
 
 // Rolling 24h activity totals per system (computed in src/lib/map/stats.ts).
 export type { SystemStatsSummary } from '@/lib/map/stats';

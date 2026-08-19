@@ -24,38 +24,57 @@ import { NOTE_TEXT_COLOR_NAMES } from '@/lib/map/noteMarkdown';
 import { SystemNotesBrowserDialog } from './SystemNotesBrowserDialog';
 import { formatAgoFromMs } from '@/lib/map/relativeTime';
 import { cn } from '@/lib/utils';
+import { apertureConfig } from '../../../aperture.config';
 import type { UpdateSystemNoteBody } from '@/lib/system-notes/client';
-import type { MapSystemNode, SystemNote, SystemNoteCategory } from '@/types';
+import type { MapSystemNode, SystemNote } from '@/types';
 
 export type SystemNoteFormValues = {
   body: string;
-  category: SystemNoteCategory | null;
+  category: string | null;
   locked: boolean;
 };
 
-/** Chip styling per category; the filter row and per-note chips share it. */
-export const NOTE_CATEGORY_STYLES: Record<SystemNoteCategory, string> = {
-  intel: 'bg-sky-500/15 text-sky-500 ring-sky-500/30',
-  journal: 'bg-violet-500/15 text-violet-500 ring-violet-500/30',
-  bounty: 'bg-emerald-500/15 text-emerald-500 ring-emerald-500/30',
-  logistics: 'bg-amber-500/15 text-amber-500 ring-amber-500/30',
-  warning: 'bg-red-500/15 text-red-500 ring-red-500/30',
-};
+/**
+ * The fixed chip palette. Deliberately closed and spelled out as full literal
+ * class strings so Tailwind's scanner keeps every colour available regardless
+ * of which ones the deployment's config picks. `SYSTEM_NOTE_CATEGORIES` colour
+ * keys type-check against this record.
+ */
+const CHIP_PALETTE = {
+  sky: 'bg-sky-500/15 text-sky-500 ring-sky-500/30',
+  violet: 'bg-violet-500/15 text-violet-500 ring-violet-500/30',
+  emerald: 'bg-emerald-500/15 text-emerald-500 ring-emerald-500/30',
+  amber: 'bg-amber-500/15 text-amber-500 ring-amber-500/30',
+  red: 'bg-red-500/15 text-red-500 ring-red-500/30',
+  orange: 'bg-orange-500/15 text-orange-500 ring-orange-500/30',
+  blue: 'bg-blue-500/15 text-blue-500 ring-blue-500/30',
+  cyan: 'bg-cyan-500/15 text-cyan-500 ring-cyan-500/30',
+  pink: 'bg-pink-500/15 text-pink-500 ring-pink-500/30',
+  gray: 'bg-gray-500/15 text-gray-500 ring-gray-500/30',
+} as const;
 
-export const NOTE_CATEGORIES = Object.keys(NOTE_CATEGORY_STYLES) as SystemNoteCategory[];
+/** The deployment's category vocabulary (see `aperture.config.ts`). */
+export const NOTE_CATEGORIES = apertureConfig.SYSTEM_NOTE_CATEGORIES;
+
+function chipClasses(categoryKey: string): string {
+  const def = NOTE_CATEGORIES.find((c) => c.key === categoryKey);
+  // A key absent from the current config (edited vocabulary) stays legible
+  // as a neutral chip.
+  return def ? CHIP_PALETTE[def.color] : CHIP_PALETTE.gray;
+}
 
 export function CategoryChip({
   category,
   className,
 }: {
-  category: SystemNoteCategory;
+  category: string;
   className?: string;
 }) {
   return (
     <span
       className={cn(
         'inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-medium capitalize ring-1',
-        NOTE_CATEGORY_STYLES[category],
+        chipClasses(category),
         className,
       )}
     >
@@ -93,13 +112,16 @@ export function SystemNotesModule({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [editing, setEditing] = useState<SystemNote | null>(null);
-  const [filter, setFilter] = useState<SystemNoteCategory | null>(null);
+  const [filter, setFilter] = useState<string | null>(null);
 
-  // Only offer filter chips for categories actually present.
-  const presentCategories = useMemo(
-    () => NOTE_CATEGORIES.filter((c) => notes.some((n) => n.category === c)),
-    [notes],
-  );
+  // Only offer filter chips for categories actually present — config order
+  // first, then any keys the current config no longer lists (neutral chips).
+  const presentCategories = useMemo(() => {
+    const present = new Set(notes.map((n) => n.category).filter((c): c is string => c !== null));
+    const known = NOTE_CATEGORIES.map((c) => c.key).filter((k) => present.has(k));
+    const unknown = [...present].filter((k) => !NOTE_CATEGORIES.some((c) => c.key === k)).sort();
+    return [...known, ...unknown];
+  }, [notes]);
   const visible = filter ? notes.filter((n) => n.category === filter) : notes;
 
   function openAdd() {
@@ -312,7 +334,7 @@ function NoteForm({
         if (!trimmed) return;
         onSubmit({
           body: trimmed,
-          category: category === NO_CATEGORY ? null : (category as SystemNoteCategory),
+          category: category === NO_CATEGORY ? null : category,
           locked,
         });
       }}
@@ -328,8 +350,8 @@ function NoteForm({
           <SelectContent>
             <SelectItem value={NO_CATEGORY}>None</SelectItem>
             {NOTE_CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c} className="capitalize">
-                {c}
+              <SelectItem key={c.key} value={c.key} className="capitalize">
+                {c.key}
               </SelectItem>
             ))}
           </SelectContent>
