@@ -15,7 +15,6 @@
 
 ### Behaviour & Interactions
 - Colour tags (`[red]…[/red]`, etc.) render via `remarkColorTags` using the fixed `NOTE_TEXT_COLORS` palette — no raw HTML, so user content can't inject markup/CSS.
-- Image syntax (`![alt](url)`) renders as a plain link, never an `<img>` — a fetched remote image would leak every viewer's IP to whoever planted the note (IP-harvesting is practiced EVE espionage), so the viewer must deliberately click through.
 - Used by `MapNoteNode` (the on-canvas snippet, line-clamped, and the full hover tooltip), `InspectorModule`'s `NoteInspector` (the live preview under the content editor), `SystemNotesModule` (note bodies), and `SystemNotesBrowserDialog` (result previews).
 
 ### Depends On

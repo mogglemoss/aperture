@@ -15,7 +15,7 @@
 | onJumpToSystem | (systemId: number) => void | yes | Focus a system on the current map (from a browser result) |
 
 ### Renders
-A `Card` with a header search button (opens the notes browser) and — when a system is selected — an "Add" button; then an optional filter row of category chips (only categories present in the list, plus "All"), and the note list. Each note row shows its category chip (if any), the body rendered as markdown via `NoteContent` (GFM + colour tags; images render as links), an attribution line (author · age, plus "edited by X" when a later editor differs), and lock / edit / delete icon buttons.
+A `Card` with a header search button (opens the notes browser) and — when a system is selected — an "Add" button; then an optional filter row of category chips (only categories present in the list, plus "All"), and the note list. Each note row shows its category chip (if any), the body rendered as markdown via `NoteContent` (GFM + colour tags), an attribution line (author · age, plus "edited by X" when a later editor differs), and lock / edit / delete icon buttons.
 
 ### Behaviour & Interactions
 - Empty states: "Select a system…" (no system) / "No notes recorded." (none) / "No notes in this category." (filter excludes all).
