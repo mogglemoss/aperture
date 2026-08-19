@@ -18,7 +18,7 @@ Error class thrown when a mutation is rejected because the note is locked. Route
 Inserts a note + a `create` audit event (payload: full row snapshot). Returns the new row.
 
 **Parameters:**
-- `input` — `{ systemId, body, category?, characterId }`; `characterId` stamps both the row's `created_by_character_id` and the audit event.
+- `input` — `{ systemId, body, category?, locked?, characterId }`; `characterId` stamps both the row's `created_by_character_id` and the audit event.
 
 ---
 

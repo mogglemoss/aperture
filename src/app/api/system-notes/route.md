@@ -6,7 +6,7 @@
 ---
 
 ### POST /api/system-notes
-Auth: `requireSystemNoteMutate(session)` — any authenticated character (401 if not signed in). Body (Zod): `systemId` int>0, `body` 1–2000, `category` enum (`intel`/`journal`/`pve`/`logistics`/`warning`) nullable optional. Calls `createSystemNote({ ...body, characterId })` (which also writes a `create` audit event), then `withAuthorName(row)`.
+Auth: `requireSystemNoteMutate(session)` — any authenticated character (401 if not signed in). Body (Zod): `systemId` int>0, `body` 1–2000, `category` enum (`intel`/`journal`/`pve`/`logistics`/`warning`) nullable optional, `locked` boolean optional. Calls `createSystemNote({ ...body, characterId })` (which also writes a `create` audit event), then `withAuthorName(row)`.
 
 **Responses:** `200 { ok: true, data: SystemNote }`; `400` invalid JSON / body / FK violation (unknown system); `401` not signed in.
 

@@ -12,6 +12,7 @@ export type CreateSystemNoteBody = {
   systemId: number;
   body: string;
   category?: SystemNoteCategory | null;
+  locked?: boolean;
 };
 
 export type UpdateSystemNoteBody = {

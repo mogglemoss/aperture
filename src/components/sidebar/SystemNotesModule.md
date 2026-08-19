@@ -21,7 +21,7 @@ A `Card` with a header search button (opens the notes browser) and — when a sy
 - Empty states: "Select a system…" (no system) / "No notes recorded." (none) / "No notes in this category." (filter excludes all).
 - The lock button toggles `locked` via `onPatch(id, { locked })`; edit and delete are disabled while locked (the server also rejects them with a 409).
 - Clicking a filter chip filters to that category; clicking it again (or "All") clears the filter. Filter state is local and per-panel.
-- "Add" / edit open a dialog with a category `Select` (None + the five categories) and a 2000-char textarea; help text lists the markdown support and colour-tag names.
+- "Add" / edit open a dialog with a category `Select` (None + the five categories), a 2000-char textarea (help text lists the markdown support and colour-tag names), and a Locked checkbox (same idiom as the map-note inspector) — so a note can be created locked or locked/unlocked while editing.
 - A browser result jump closes the browser and calls `onJumpToSystem`.
 - **Not realtime-synced** — another user's note edits appear on the next page load (notes are deployment-global, not map-scoped).
 
@@ -35,7 +35,7 @@ A `Card` with a header search button (opens the notes browser) and — when a sy
 - `Select` primitives, `Dialog` primitives, `Card`, `Button`.
 
 ### Exports
-- `SystemNoteFormValues` — `{ body, category }` dialog output.
+- `SystemNoteFormValues` — `{ body, category, locked }` dialog output.
 - `NOTE_CATEGORIES` / `NOTE_CATEGORY_STYLES` / `CategoryChip` — the category vocabulary, chip styling, and chip component (shared with the browser dialog).
 
 ### Local State

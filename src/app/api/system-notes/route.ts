@@ -22,6 +22,7 @@ const createSystemNoteBodySchema = z.object({
   systemId: z.number().int().positive(),
   body: z.string().min(1).max(2000),
   category: z.enum(['intel', 'journal', 'pve', 'logistics', 'warning']).nullable().optional(),
+  locked: z.boolean().optional(),
 });
 
 export const POST = withApiMetrics('/api/system-notes', async function POST(request: NextRequest) {

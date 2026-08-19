@@ -25,6 +25,7 @@ export type CreateSystemNoteInput = {
   systemId: number;
   body: string;
   category?: SystemNoteCategory | null;
+  locked?: boolean;
   characterId: bigint | null;
 };
 
@@ -77,6 +78,7 @@ export function createSystemNote(input: CreateSystemNoteInput): Promise<ApSystem
         systemId: input.systemId,
         body: input.body,
         category: input.category ?? null,
+        locked: input.locked ?? false,
         createdByCharacterId: input.characterId,
       })
       .returning();

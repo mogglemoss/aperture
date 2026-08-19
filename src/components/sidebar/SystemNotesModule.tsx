@@ -30,6 +30,7 @@ import type { MapSystemNode, SystemNote, SystemNoteCategory } from '@/types';
 export type SystemNoteFormValues = {
   body: string;
   category: SystemNoteCategory | null;
+  locked: boolean;
 };
 
 /** Chip styling per category; the filter row and per-note chips share it. */
@@ -300,6 +301,7 @@ function NoteForm({
 }) {
   const [body, setBody] = useState(initial?.body ?? '');
   const [category, setCategory] = useState<string>(initial?.category ?? NO_CATEGORY);
+  const [locked, setLocked] = useState(initial?.locked ?? false);
   const trimmed = body.trim();
 
   return (
@@ -311,6 +313,7 @@ function NoteForm({
         onSubmit({
           body: trimmed,
           category: category === NO_CATEGORY ? null : (category as SystemNoteCategory),
+          locked,
         });
       }}
     >
@@ -351,6 +354,10 @@ function NoteForm({
           {NOTE_TEXT_COLOR_NAMES.map((name) => `[${name}]`).join(' ')}
         </p>
       </div>
+      <label className="flex items-center gap-1.5 text-sm">
+        <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} />
+        <span>Locked</span>
+      </label>
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
