@@ -1,6 +1,6 @@
 ## SystemNotesModule
 
-**Purpose:** Sidebar module listing global system notes for the selected system, with add/edit/delete.
+**Purpose:** Sidebar module for global system notes on the selected system — markdown bodies, category chips with a filter row, per-note lock, add/edit/delete, and the deployment-wide notes browser.
 **File:** `src/components/sidebar/SystemNotesModule.tsx`
 
 ### Props
@@ -8,19 +8,35 @@
 | Prop | Type | Required | Description |
 |---|---|---|---|
 | system | MapSystemNode \| null | yes | Selected system; null shows the empty state |
-| notes | SystemNote[] | yes | Notes for the selected system, newest first (sliced by the parent) |
-| onCreate | (body: string) => void | yes | Add a note (parent supplies the systemId) |
-| onPatch | (noteId: string, body: string) => void | yes | Edit a note's body |
+| notes | SystemNote[] | yes | Notes for the selected system (sliced by the parent, newest first) |
+| onCreate | (values: SystemNoteFormValues) => void | yes | Add a note (parent supplies the systemId) |
+| onPatch | (noteId: string, patch: UpdateSystemNoteBody) => void | yes | Edit a note — body/category from the dialog, or a bare lock toggle |
 | onDelete | (noteId: string) => void | yes | Delete a note |
+| onJumpToSystem | (systemId: number) => void | yes | Focus a system on the current map (from a browser result) |
 
 ### Renders
-A `Card` with a right-aligned "Add" button (only when a system is selected) and a list of note rows (body rendered `pre-wrap`, author + relative age line), each with edit/delete icon buttons. The panel name ("System Notes") comes from the surrounding `MapPanelGroup` chrome — no in-card title.
+A `Card` with a header search button (opens the notes browser) and — when a system is selected — an "Add" button; then an optional filter row of category chips (only categories present in the list, plus "All"), and the note list. Each note row shows its category chip (if any), the body rendered as markdown via `NoteContent` (GFM + colour tags; images render as links), an attribution line (author · age, plus "edited by X" when a later editor differs), and lock / edit / delete icon buttons.
 
 ### Behaviour & Interactions
-- Empty states: "Select a system…" (no system) / "No notes recorded." (none).
-- "Add" / edit open an internal create/edit dialog (single textarea, max 2000 chars; save disabled while empty; the dialog notes the entry is visible from every map).
-- Notes are keyed on the static system, not the map — the same list appears wherever the system is on any map.
+- Empty states: "Select a system…" (no system) / "No notes recorded." (none) / "No notes in this category." (filter excludes all).
+- The lock button toggles `locked` via `onPatch(id, { locked })`; edit and delete are disabled while locked (the server also rejects them with a 409).
+- Clicking a filter chip filters to that category; clicking it again (or "All") clears the filter. Filter state is local and per-panel.
+- "Add" / edit open a dialog with a category `Select` (None + the five categories) and a 2000-char textarea; help text lists the markdown support and colour-tag names.
+- A browser result jump closes the browser and calls `onJumpToSystem`.
 - **Not realtime-synced** — another user's note edits appear on the next page load (notes are deployment-global, not map-scoped).
 
+### Emits / Calls
+- `onCreate` / `onPatch` / `onDelete` / `onJumpToSystem` as above.
+
+### Depends On
+- `NoteContent` (`@/components/map/NoteContent`) — markdown rendering.
+- `NOTE_TEXT_COLOR_NAMES` (`@/lib/map/noteMarkdown`) — colour-tag help text.
+- `SystemNotesBrowserDialog` — the deployment-wide search dialog.
+- `Select` primitives, `Dialog` primitives, `Card`, `Button`.
+
+### Exports
+- `SystemNoteFormValues` — `{ body, category }` dialog output.
+- `NOTE_CATEGORIES` / `NOTE_CATEGORY_STYLES` / `CategoryChip` — the category vocabulary, chip styling, and chip component (shared with the browser dialog).
+
 ### Local State
-- `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode).
+- `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode), `browserOpen: boolean`, `filter: SystemNoteCategory | null`.

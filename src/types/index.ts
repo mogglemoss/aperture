@@ -64,6 +64,7 @@ import type {
   sharePresenceMode,
   signatureGroupKey,
   structureEventKind,
+  systemNoteCategory,
   systemNoteEventKind,
   tagScheme,
   whJumpMass,
@@ -246,6 +247,7 @@ export type SharePresenceMode = (typeof sharePresenceMode.enumValues)[number];
 export type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 export type StructureEventKind = (typeof structureEventKind.enumValues)[number];
 export type SystemNoteEventKind = (typeof systemNoteEventKind.enumValues)[number];
+export type SystemNoteCategory = (typeof systemNoteCategory.enumValues)[number];
 export type TagScheme = (typeof tagScheme.enumValues)[number];
 export type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 
@@ -535,8 +537,8 @@ export type { SystemSearchResult } from '@/lib/map/systemSearch';
 // Read-side structure-intel view-models (computed in src/lib/structures/read.ts).
 export type { StructureIntel, UpwellStructureType } from '@/lib/structures/read';
 
-// Read-side global system-note view-model (computed in src/lib/system-notes/read.ts).
-export type { SystemNote } from '@/lib/system-notes/read';
+// Read-side global system-note view-models (computed in src/lib/system-notes/read.ts).
+export type { SystemNote, SystemNoteSearchResult } from '@/lib/system-notes/read';
 
 // Rolling 24h activity totals per system (computed in src/lib/map/stats.ts).
 export type { SystemStatsSummary } from '@/lib/map/stats';
@@ -556,6 +558,7 @@ export type {
 export type {
   CreateSystemNoteInput,
   UpdateSystemNoteInput,
+  UpdateSystemNotePatch,
   DeleteSystemNoteInput,
 } from '@/lib/system-notes/mutations';
 

@@ -1,21 +1,31 @@
 ## read.ts
 
-**Purpose:** Read-side queries shaping global system notes for the sidebar.
+**Purpose:** Read-side queries shaping global system notes for the sidebar and the notes browser.
 **File:** `src/lib/system-notes/read.ts`
 
 ---
 
 ### systemNotesForSystems(systemIds: number[]): Promise<Record<number, SystemNote[]>>
-Global system notes for the given universe systems, keyed by `system_id`, newest first within each system. One batched query joins `ap_character` for the author name. Systems with no notes are absent from the record.
+Global system notes for the given universe systems, keyed by `system_id`, newest first within each system. One batched query joins `ap_character` twice (author and last editor) for names. Systems with no notes are absent from the record.
 
 System notes have no realtime channel (deployment-global, not map-scoped): this snapshot is load-time only — a note another user adds appears on the next page load.
 
 **Parameters:**
 - `systemIds` — EVE solar-system ids visible in the map view.
 
-**Returns:** `SystemNote[]` per system id: `{ id (string), systemId, body, createdByName, createdAt, updatedAt }`.
+**Returns:** `SystemNote[]` per system id: `{ id (string), systemId, body, category, locked, createdByName, lastEditedByName, createdAt, updatedAt }`.
+
+---
+
+### searchSystemNotes(query: string): Promise<SystemNoteSearchResult[]>
+Deployment-wide note search for the notes browser: case-insensitive substring match (ILIKE, with `%`/`_`/`\` escaped) on the note body OR the system's name, newest first, capped at `NOTE_SEARCH_LIMIT`. Joins `universe_system` for the display name.
+
+**Returns:** `SystemNoteSearchResult[]` — a `SystemNote` plus `systemName`.
+
+### NOTE_SEARCH_LIMIT: number
+Search-result cap (50).
 
 ---
 
 ### withAuthorName(row: ApSystemNote): Promise<SystemNote>
-Shapes a freshly written `ap_system_note` row into a `SystemNote` for the client, resolving `createdByName`. Used by the create/update routes so the client always receives a complete row to splice into local state.
+Shapes a freshly written `ap_system_note` row into a `SystemNote` for the client, resolving author and last-editor names. Used by the create/update routes so the client always receives a complete row to splice into local state.

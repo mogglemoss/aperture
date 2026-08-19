@@ -1,6 +1,16 @@
-import { bigint, bigserial, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  bigserial,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 import { universeSystem } from '../universe/geography';
 import { apCharacter } from './character';
+import { systemNoteCategory } from './enums';
 
 // Global system notes: free-text intel entries on a universe system.
 // System-scoped and deployment-global (shared across maps) — unlike
@@ -16,8 +26,18 @@ export const apSystemNote = pgTable(
       .notNull()
       .references(() => universeSystem.id, { onDelete: 'restrict' }),
     body: text('body').notNull(),
+    // Null ⇒ uncategorized (no chip in the panel).
+    category: systemNoteCategory('category'),
+    // A locked note refuses edit/delete server-side until unlocked. Any
+    // authenticated user may unlock — a guard rail against accidents, not
+    // malice; the audit log covers malice.
+    locked: boolean('locked').notNull().default(false),
     // Audit only — erasing a character must not cascade-wipe gathered intel.
     createdByCharacterId: bigint('created_by_character_id', { mode: 'bigint' }).references(
+      () => apCharacter.id,
+      { onDelete: 'set null' },
+    ),
+    lastEditedByCharacterId: bigint('last_edited_by_character_id', { mode: 'bigint' }).references(
       () => apCharacter.id,
       { onDelete: 'set null' },
     ),

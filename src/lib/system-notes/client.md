@@ -8,10 +8,13 @@ Unlike the map mutations these carry no `eventId` (notes emit no realtime event)
 ---
 
 ### createSystemNoteOnServer(body: CreateSystemNoteBody): Promise<FetchResult<SystemNote>>
-`POST /api/system-notes` with `{ systemId, body }`.
+`POST /api/system-notes` with `{ systemId, body, category? }`.
 
 ### updateSystemNoteOnServer(args: { noteId: string; patch: UpdateSystemNoteBody }): Promise<FetchResult<SystemNote>>
-`PATCH /api/system-notes/[noteId]` with `{ body }`.
+`PATCH /api/system-notes/[noteId]` with any of `{ body?, category?, locked? }`.
 
 ### deleteSystemNoteOnServer(args: { noteId: string }): Promise<FetchResult<{ id: string }>>
 `DELETE /api/system-notes/[noteId]`.
+
+### searchSystemNotesOnServer(query: string): Promise<FetchResult<SystemNoteSearchResult[]>>
+`GET /api/system-notes/search?q=…` — deployment-wide note search for the notes browser. The caller debounces.

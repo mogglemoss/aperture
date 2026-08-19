@@ -1,5 +1,5 @@
 import { requestJson, type FetchResult } from '@/lib/http/fetchJson';
-import type { SystemNote } from '@/types';
+import type { SystemNote, SystemNoteCategory, SystemNoteSearchResult } from '@/types';
 
 /**
  * Browser-side fetch wrappers for the global system-note REST routes. Unlike
@@ -11,10 +11,13 @@ import type { SystemNote } from '@/types';
 export type CreateSystemNoteBody = {
   systemId: number;
   body: string;
+  category?: SystemNoteCategory | null;
 };
 
 export type UpdateSystemNoteBody = {
-  body: string;
+  body?: string;
+  category?: SystemNoteCategory | null;
+  locked?: boolean;
 };
 
 export function createSystemNoteOnServer(
@@ -38,4 +41,14 @@ export function deleteSystemNoteOnServer(args: {
   noteId: string;
 }): Promise<FetchResult<{ id: string }>> {
   return requestJson<FetchResult<{ id: string }>>('DELETE', `/api/system-notes/${args.noteId}`);
+}
+
+/** Deployment-wide note search for the notes browser. The caller debounces. */
+export function searchSystemNotesOnServer(
+  query: string,
+): Promise<FetchResult<SystemNoteSearchResult[]>> {
+  return requestJson<FetchResult<SystemNoteSearchResult[]>>(
+    'GET',
+    `/api/system-notes/search?q=${encodeURIComponent(query)}`,
+  );
 }

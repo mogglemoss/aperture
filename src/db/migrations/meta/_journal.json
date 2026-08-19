@@ -470,6 +470,13 @@
       "when": 1787086823008,
       "tag": "0067_system_note",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787159440468,
+      "tag": "0068_system_note_lock_category",
+      "breakpoints": true
     }
   ]
 }

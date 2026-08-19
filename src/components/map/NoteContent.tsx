@@ -49,6 +49,19 @@ const components: Components = {
     <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">{children}</code>
   ),
   hr: () => <hr className="border-border" />,
+  // Never fetch a remote image: `![…](url)` would make every viewer's browser
+  // call an arbitrary host, leaking each reader's IP to whoever planted the
+  // note (IP-harvesting is practiced EVE espionage). Render as a plain link.
+  img: ({ src, alt }) => (
+    <a
+      href={typeof src === 'string' ? src : undefined}
+      target="_blank"
+      rel="noreferrer"
+      className="text-primary underline underline-offset-2 hover:no-underline"
+    >
+      {alt || 'image'}
+    </a>
+  ),
 };
 
 /**

@@ -3,7 +3,11 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { requireSystemNoteMutate } from '@/lib/system-notes/guard';
-import { deleteSystemNote, updateSystemNote } from '@/lib/system-notes/mutations';
+import {
+  deleteSystemNote,
+  SystemNoteLockedError,
+  updateSystemNote,
+} from '@/lib/system-notes/mutations';
 import { withAuthorName } from '@/lib/system-notes/read';
 import { parseBigInt } from '../../map/utils';
 import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
@@ -11,14 +15,19 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 /**
  * PATCH / DELETE /api/system-notes/[noteId] — edit or remove a global
  * system-note row. Any authenticated user may write; the mutation records an
- * `update` / `delete` row in `ap_system_note_event` for accountability.
+ * `update` / `delete` row in `ap_system_note_event` for accountability. A
+ * locked note rejects everything except the bare unlock patch with a 409.
  */
 
 export const runtime = 'nodejs';
 
-const updateSystemNoteBodySchema = z.object({
-  body: z.string().min(1).max(2000),
-});
+const updateSystemNoteBodySchema = z
+  .object({
+    body: z.string().min(1).max(2000).optional(),
+    category: z.enum(['intel', 'journal', 'pve', 'logistics', 'warning']).nullable().optional(),
+    locked: z.boolean().optional(),
+  })
+  .refine((patch) => Object.keys(patch).length > 0, { message: 'Empty patch.' });
 
 export const PATCH = withApiMetrics('/api/system-notes/:noteId', async function PATCH(
   request: NextRequest,
@@ -51,14 +60,24 @@ export const PATCH = withApiMetrics('/api/system-notes/:noteId', async function 
     );
   }
 
-  const row = await updateSystemNote({
-    noteId,
-    body: parsed.data.body,
-    characterId: guard.characterId,
-  });
-  if (!row) return Response.json({ ok: false, error: 'Note not found.' }, { status: 404 });
-  const data = await withAuthorName(row);
-  return Response.json({ ok: true, data });
+  try {
+    const row = await updateSystemNote({
+      noteId,
+      patch: parsed.data,
+      characterId: guard.characterId,
+    });
+    if (!row) return Response.json({ ok: false, error: 'Note not found.' }, { status: 404 });
+    const data = await withAuthorName(row);
+    return Response.json({ ok: true, data });
+  } catch (err) {
+    if (err instanceof SystemNoteLockedError) {
+      return Response.json(
+        { ok: false, error: 'Note is locked — unlock it first.' },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 });
 
 export const DELETE = withApiMetrics('/api/system-notes/:noteId', async function DELETE(
@@ -77,7 +96,17 @@ export const DELETE = withApiMetrics('/api/system-notes/:noteId', async function
     return Response.json({ ok: false, error: 'Invalid note id.' }, { status: 400 });
   }
 
-  const row = await deleteSystemNote({ noteId, characterId: guard.characterId });
-  if (!row) return Response.json({ ok: false, error: 'Note not found.' }, { status: 404 });
-  return Response.json({ ok: true, data: { id: row.id.toString() } });
+  try {
+    const row = await deleteSystemNote({ noteId, characterId: guard.characterId });
+    if (!row) return Response.json({ ok: false, error: 'Note not found.' }, { status: 404 });
+    return Response.json({ ok: true, data: { id: row.id.toString() } });
+  } catch (err) {
+    if (err instanceof SystemNoteLockedError) {
+      return Response.json(
+        { ok: false, error: 'Note is locked — unlock it first.' },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 });

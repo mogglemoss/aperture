@@ -87,6 +87,7 @@ import {
   createSystemNoteOnServer,
   deleteSystemNoteOnServer,
   updateSystemNoteOnServer,
+  type UpdateSystemNoteBody,
 } from '@/lib/system-notes/client';
 import { mapUpdateLoadSchema, type Envelope } from '@/lib/realtime/protocol';
 import { useMapSubscription, useRealtimeEvents, useReconnectResync } from '@/lib/realtime/useRealtime';
@@ -99,7 +100,10 @@ import { TheraModule } from '@/components/sidebar/TheraModule';
 import { IntelModule } from '@/components/sidebar/IntelModule';
 import { StructureModule } from '@/components/sidebar/StructureModule';
 import type { StructureFormValues } from '@/components/sidebar/StructureFormDialog';
-import { SystemNotesModule } from '@/components/sidebar/SystemNotesModule';
+import {
+  SystemNotesModule,
+  type SystemNoteFormValues,
+} from '@/components/sidebar/SystemNotesModule';
 import { InspectorModule, type SelectionRef } from '@/components/sidebar/InspectorModule';
 import {
   SignatureModule,
@@ -475,6 +479,7 @@ export function MapCanvas({
         isHome: s.id === data.map.homeMapSystemId,
         inFactionWarfare: intel[s.systemId]?.factionWar != null,
         hasIncursion: intel[s.systemId]?.incursion != null,
+        hasNotes: (systemNotes[s.systemId] ?? []).length > 0,
       },
       selected: false,
       draggable: !s.locked,
@@ -1745,6 +1750,7 @@ export function MapCanvas({
     // multi-select set), so a note selection change must trigger a re-sync.
     selected: SelectionRef | null;
     intel: Record<number, SystemIntelSummary>;
+    systemNotes: Record<number, SystemNote[]>;
   } | null>(null);
   if (
     !lastSync ||
@@ -1754,9 +1760,18 @@ export function MapCanvas({
     lastSync.selected !== selected ||
     // `intel` is replaced by reference when a live-added system's data backfills;
     // re-sync so its decorators (sov/FW/incursion) appear without a systems change.
-    lastSync.intel !== intel
+    lastSync.intel !== intel ||
+    // Same for `systemNotes` — the node's notes indicator tracks CRUD + backfill.
+    lastSync.systemNotes !== systemNotes
   ) {
-    setLastSync({ systems: viewData.systems, notes: viewData.notes, selectedSystemIds, selected, intel });
+    setLastSync({
+      systems: viewData.systems,
+      notes: viewData.notes,
+      selectedSystemIds,
+      selected,
+      intel,
+      systemNotes,
+    });
     setNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]));
       return [
@@ -1776,6 +1791,7 @@ export function MapCanvas({
               isHome: s.id === viewData.map.homeMapSystemId,
               inFactionWarfare: intel[s.systemId]?.factionWar != null,
               hasIncursion: intel[s.systemId]?.incursion != null,
+              hasNotes: (systemNotes[s.systemId] ?? []).length > 0,
             },
             selected: selectedSystemIds.has(s.id),
             draggable: !s.locked,
@@ -1908,10 +1924,10 @@ export function MapCanvas({
     b.createdAt.localeCompare(a.createdAt);
 
   const onSystemNoteCreate = useCallback(
-    async (body: string) => {
+    async (values: SystemNoteFormValues) => {
       if (!selectedSystem) return;
       const systemId = selectedSystem.systemId;
-      const result = await createSystemNoteOnServer({ systemId, body });
+      const result = await createSystemNoteOnServer({ systemId, ...values });
       if (!result.ok) return;
       setSystemNotes((prev) => ({
         ...prev,
@@ -1921,8 +1937,8 @@ export function MapCanvas({
     [selectedSystem],
   );
 
-  const onSystemNotePatch = useCallback(async (noteId: string, body: string) => {
-    const result = await updateSystemNoteOnServer({ noteId, patch: { body } });
+  const onSystemNotePatch = useCallback(async (noteId: string, patch: UpdateSystemNoteBody) => {
+    const result = await updateSystemNoteOnServer({ noteId, patch });
     if (!result.ok) return;
     const updated = result.data;
     setSystemNotes((prev) => ({
@@ -1932,6 +1948,30 @@ export function MapCanvas({
       ),
     }));
   }, []);
+
+  // Jump target for the notes browser: focus the system if it's on this map.
+  const onJumpToSystem = useCallback(
+    (systemId: number) => {
+      const target = viewData.systems.find((s) => s.systemId === systemId);
+      if (!target) {
+        toast.info('That system is not on this map.');
+        return;
+      }
+      setSelected({ kind: 'system', id: target.id });
+      setSelectedSystemIds(new Set([target.id]));
+      const inst = flowInstance.current;
+      const node = inst?.getNode(target.id);
+      if (inst && node) {
+        const w = node.measured?.width ?? node.width ?? 0;
+        const h = node.measured?.height ?? node.height ?? 0;
+        inst.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+          zoom: inst.getZoom(),
+          duration: 0,
+        });
+      }
+    },
+    [viewData.systems],
+  );
 
   const onSystemNoteDelete = useCallback(
     async (noteId: string) => {
@@ -2169,6 +2209,7 @@ export function MapCanvas({
             onCreate={onSystemNoteCreate}
             onPatch={onSystemNotePatch}
             onDelete={onSystemNoteDelete}
+            onJumpToSystem={onJumpToSystem}
           />
         );
       case 'killStats':
