@@ -21,7 +21,8 @@ A `Card` with a header search button (opens the notes browser) and — when a sy
 - Empty states: "Select a system…" (no system) / "No notes recorded." (none) / "No notes in this category." (filter excludes all).
 - The lock button toggles `locked` via `onPatch(id, { locked })`; edit and delete are disabled while locked (the server also rejects them with a 409).
 - Clicking a filter chip filters to that category; clicking it again (or "All") clears the filter. Filter state is local and per-panel.
-- "Add" / edit open a dialog with a category `Select` (None + the configured vocabulary), a 2000-char textarea (help text lists the markdown support and colour-tag names), and a Locked checkbox (same idiom as the map-note inspector) — so a note can be created locked or locked/unlocked while editing.
+- "Add" / edit open a dialog with a category `Select` (None + the configured vocabulary), a 2000-char textarea (help text lists the markdown support and colour-tag names), and a Locked checkbox (same idiom as the map-note inspector) — so a note can be created locked or locked/unlocked while editing. Editing a note whose stored category the config no longer lists coerces the Select to None (the server rejects legacy keys), so saving visibly clears it.
+- The category filter resets to "All" when the selected system changes — a chip chosen on one system must not hide another system's notes.
 - The category vocabulary comes from `apertureConfig.SYSTEM_NOTE_CATEGORIES` (`{ key, color }[]`); chip classes come from a fixed, closed palette record (full literal class strings so Tailwind keeps every colour available). A stored key absent from the current config renders as a neutral gray chip and still filters.
 - A browser result jump closes the browser and calls `onJumpToSystem`.
 - **Not realtime-synced** — another user's note edits appear on the next page load (notes are deployment-global, not map-scoped).
@@ -40,4 +41,4 @@ A `Card` with a header search button (opens the notes browser) and — when a sy
 - `NOTE_CATEGORIES` / `CategoryChip` — the configured vocabulary and the chip component (shared with the browser dialog).
 
 ### Local State
-- `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode), `browserOpen: boolean`, `filter: string | null`.
+- `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode), `browserOpen: boolean`, `filter: string | null` (plus the previous system id, so the filter resets during render on system switch).

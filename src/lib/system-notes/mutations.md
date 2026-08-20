@@ -5,7 +5,7 @@
 
 Notes are deployment-global manual intel with no `map_id`, so they do NOT go through `commitMapEvent` / `ap_map_event` and emit no realtime event — a plain REST resource. Deletes are hard deletes; the audit row carries the full pre-delete snapshot so the intel stays recoverable.
 
-Locking: a locked note rejects every change except the bare unlock (`{ locked: false }` alone) and rejects delete, both by throwing `SystemNoteLockedError`. Any authenticated user may toggle the lock — an accident guard rail, not an ownership claim; the audit log covers malice. The lock check reads the row `FOR UPDATE` inside the transaction.
+Locking: a locked note rejects every change except the bare unlock (`{ locked: false }` alone) and rejects delete, both by throwing `SystemNoteLockedError`. A lock-only patch matching the current state is an idempotent no-op (current row returned, no event) — a double-click never 409s. Any authenticated user may toggle the lock — an accident guard rail, not an ownership claim; the audit log covers malice. The lock check reads the row `FOR UPDATE` inside the transaction.
 
 ---
 
@@ -23,7 +23,7 @@ Inserts a note + a `create` audit event (payload: full row snapshot). Returns th
 ---
 
 ### updateSystemNote(input: UpdateSystemNoteInput): Promise<ApSystemNote | null>
-Patches a note — only present keys of `patch` (`body?`, `category?`, `locked?`) change; `updated_at` and `last_edited_by_character_id` stamp on every accepted patch — + an `update` audit event carrying the patch. Returns the updated row, or null if the id does not exist (no event written). Throws `SystemNoteLockedError` when locked and the patch is not the bare unlock.
+Patches a note — only present keys of `patch` (`body?`, `category?`, `locked?`) change. `updated_at` and `last_edited_by_character_id` stamp only when the patch touches content (`body`/`category`); a pure lock toggle claims no edit attribution. Writes an `update` audit event whose payload carries the patch **and** the full pre-edit snapshot (`{ patch, previous }`) — an edited-away body stays as recoverable as a deleted one. Returns the updated row, or null if the id does not exist (no event written). Throws `SystemNoteLockedError` when locked and the patch is not the bare unlock; a state-matching lock-only patch no-ops.
 
 ---
 

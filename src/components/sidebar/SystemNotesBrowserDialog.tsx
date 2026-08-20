@@ -72,7 +72,9 @@ function BrowserSearch({ onJumpToSystem }: { onJumpToSystem: (systemId: number) 
       void searchSystemNotesOnServer(trimmed).then((result) => {
         if (seq !== requestSeq.current) return;
         setSearching(false);
-        if (result.ok) setResults(result.data);
+        // On failure, clear rather than leave the previous query's hits on
+        // screen mismatching the input (requestJson already toasts the error).
+        setResults(result.ok ? result.data : []);
       });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -95,7 +97,9 @@ function BrowserSearch({ onJumpToSystem }: { onJumpToSystem: (systemId: number) 
           <Loader2 className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
         ) : null}
       </div>
-      <div className="flex flex-col gap-2 overflow-y-auto text-xs">
+      {/* The scroller itself is height-capped (the DialogContent clips overflow,
+          so an unbounded list would push lower results out of reach). */}
+      <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto text-xs">
         {trimmed.length < SEARCH_MIN_CHARS ? (
           <p className="text-muted-foreground">Type at least {SEARCH_MIN_CHARS} characters.</p>
         ) : results.length === 0 && !searching ? (
@@ -104,10 +108,23 @@ function BrowserSearch({ onJumpToSystem }: { onJumpToSystem: (systemId: number) 
           <ul className="flex flex-col gap-2">
             {results.map((r) => (
               <li key={r.id}>
-                <button
-                  type="button"
-                  onClick={() => onJumpToSystem(r.systemId)}
-                  className="flex w-full flex-col gap-1 rounded border border-border p-2 text-left hover:bg-accent/50"
+                {/* Not a <button>: the markdown body can contain links, and
+                    interactive content inside a button is invalid HTML. Clicks
+                    that originate on a link follow the link only. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('a')) return;
+                    onJumpToSystem(r.systemId);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onJumpToSystem(r.systemId);
+                    }
+                  }}
+                  className="flex w-full cursor-pointer flex-col gap-1 rounded border border-border p-2 text-left hover:bg-accent/50"
                 >
                   <span className="flex items-center gap-1.5">
                     <span className="font-mono font-medium text-foreground">{r.systemName}</span>
@@ -118,7 +135,7 @@ function BrowserSearch({ onJumpToSystem }: { onJumpToSystem: (systemId: number) 
                     {r.createdByName ? `${r.createdByName} · ` : ''}
                     {relativeTime(r.createdAt)}
                   </span>
-                </button>
+                </div>
               </li>
             ))}
           </ul>

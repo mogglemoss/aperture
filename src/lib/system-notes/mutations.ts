@@ -94,29 +94,40 @@ export function createSystemNote(input: CreateSystemNoteInput): Promise<ApSystem
 }
 
 /**
- * Patch a note (only present keys change; `updated_at` and the last-editor
- * stamp bump on every accepted patch) + an `update` audit event carrying the
- * patch. Returns the updated row, or null if the id does not exist (no event
- * written). Throws `SystemNoteLockedError` when the note is locked and the
- * patch is anything other than the bare unlock.
+ * Patch a note (only present keys change) + an `update` audit event carrying
+ * the patch AND the full pre-edit snapshot — without it, an edit would destroy
+ * the original text unrecoverably while a delete stays recoverable, inverting
+ * the incentive the lock/audit design creates. Returns the updated row, or
+ * null if the id does not exist (no event written).
+ *
+ * Locking: a locked note admits only the bare unlock; anything else throws
+ * `SystemNoteLockedError`. A lock-only patch that matches the current state is
+ * an idempotent no-op (current row returned, no event) — a double-click must
+ * not 409. `updated_at` and the last-editor stamp bump only when the patch
+ * touches content (`body` / `category`); a pure lock toggle is not an edit and
+ * must not claim edit attribution.
  */
 export function updateSystemNote(input: UpdateSystemNoteInput): Promise<ApSystemNote | null> {
   const { patch } = input;
   return db.transaction(async (tx) => {
     const [existing] = await tx
-      .select({ locked: apSystemNote.locked })
+      .select()
       .from(apSystemNote)
       .where(eq(apSystemNote.id, input.noteId))
       .for('update');
     if (!existing) return null;
-    const isBareUnlock =
-      patch.locked === false && !('body' in patch) && !('category' in patch);
+
+    const touchesContent = 'body' in patch || 'category' in patch;
+    const lockOnly = 'locked' in patch && !touchesContent;
+    if (lockOnly && patch.locked === existing.locked) return existing;
+    const isBareUnlock = lockOnly && patch.locked === false;
     if (existing.locked && !isBareUnlock) throw new SystemNoteLockedError();
 
-    const set: Partial<InferInsertModel<typeof apSystemNote>> = {
-      updatedAt: new Date(),
-      lastEditedByCharacterId: input.characterId,
-    };
+    const set: Partial<InferInsertModel<typeof apSystemNote>> = {};
+    if (touchesContent) {
+      set.updatedAt = new Date();
+      set.lastEditedByCharacterId = input.characterId;
+    }
     if ('body' in patch) set.body = patch.body;
     if ('category' in patch) set.category = patch.category ?? null;
     if ('locked' in patch) set.locked = patch.locked;
@@ -133,7 +144,7 @@ export function updateSystemNote(input: UpdateSystemNoteInput): Promise<ApSystem
       systemId: row.systemId,
       characterId: input.characterId,
       kind: 'update',
-      payload: patch,
+      payload: { patch, previous: snapshot(existing) },
     });
     return row;
   });

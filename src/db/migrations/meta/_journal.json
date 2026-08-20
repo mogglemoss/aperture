@@ -491,6 +491,13 @@
       "when": 1787161556276,
       "tag": "0070_system_note_category_config",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787238498639,
+      "tag": "0071_system_note_body_trgm",
+      "breakpoints": true
     }
   ]
 }

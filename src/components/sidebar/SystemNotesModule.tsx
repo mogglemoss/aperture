@@ -114,6 +114,15 @@ export function SystemNotesModule({
   const [editing, setEditing] = useState<SystemNote | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
 
+  // A filter chosen on one system must not silently hide another system's
+  // notes behind a chip that is no longer rendered. Reset during render (not
+  // in an effect) so the switched-to system never paints filtered.
+  const [filterSystemId, setFilterSystemId] = useState(system?.systemId ?? null);
+  if (filterSystemId !== (system?.systemId ?? null)) {
+    setFilterSystemId(system?.systemId ?? null);
+    setFilter(null);
+  }
+
   // Only offer filter chips for categories actually present — config order
   // first, then any keys the current config no longer lists (neutral chips).
   const presentCategories = useMemo(() => {
@@ -322,7 +331,13 @@ function NoteForm({
   onCancel: () => void;
 }) {
   const [body, setBody] = useState(initial?.body ?? '');
-  const [category, setCategory] = useState<string>(initial?.category ?? NO_CATEGORY);
+  // A stored key the current config no longer lists can't be offered by the
+  // Select (and the server would reject it); it coerces to None, so saving
+  // visibly clears the legacy category rather than 400ing.
+  const [category, setCategory] = useState<string>(() => {
+    const c = initial?.category;
+    return c && NOTE_CATEGORIES.some((d) => d.key === c) ? c : NO_CATEGORY;
+  });
   const [locked, setLocked] = useState(initial?.locked ?? false);
   const trimmed = body.trim();
 
