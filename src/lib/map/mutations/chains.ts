@@ -1,8 +1,6 @@
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
-import { db } from '@/db/client';
 import { apMapChain, apMapChainMember, chainKind } from '@/db/schema';
-import { commitMapEvent, enqueueWebhookDispatch, type ActionResult, type Tx } from './core';
-import { createConnection, type CreateConnectionInput } from './connections';
+import { commitMapEvent, type ActionResult, type Tx } from './core';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -20,8 +18,12 @@ import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
  * only the owner grows their personal chain.
  *
  * No `import 'server-only'`: like `core.ts`, this module is a seam for the
- * plain-Node graphile-worker fold path (tracking-driven membership), which
- * crashes on the bare `server-only` throw. All current callers are server-side.
+ * plain-Node graphile-worker fold path (`locationCommit.ts` fans a tracked jump
+ * out to the chains holding the from-system), which crashes on the bare
+ * `server-only` throw — and on the unresolvable `server-only` specifier under
+ * `tsx`. That also forbids importing any sibling that carries the guard
+ * (`connections.ts` et al.); the route-only orchestrator that joins
+ * `createConnection` with the attach lives in `connections.ts` for this reason.
  */
 
 type ChainKind = (typeof chainKind.enumValues)[number];
@@ -389,8 +391,12 @@ export async function attachChainMemberOnConnection(
     const treeAdjacent =
       inThisChain.parentMemberId === source.id || source.parentMemberId === inThisChain.id;
     if (treeAdjacent) {
-      // The tree edge already exists; record which connection realises it.
-      if (inThisChain.viaConnectionId !== null) return null;
+      // The tree edge already exists; record which connection realises it. The
+      // via belongs to the *child* of the pair (via = how the member was
+      // reached from its parent) — a traversal from the child toward its
+      // parent must never stamp the parent's via (a root's stays null).
+      const child = inThisChain.parentMemberId === source.id ? inThisChain : source;
+      if (child.viaConnectionId !== null) return null;
       const result = await commitMapEvent({
         mapId: args.mapId,
         characterId: args.characterId,
@@ -400,7 +406,7 @@ export async function attachChainMemberOnConnection(
           const [row] = await t
             .update(apMapChainMember)
             .set({ viaConnectionId: args.connectionId })
-            .where(eq(apMapChainMember.id, inThisChain.id))
+            .where(eq(apMapChainMember.id, child.id))
             .returning(memberColumns);
           return memberPatch(row!, chain.name, null);
         },
@@ -481,41 +487,4 @@ async function earliestRealMemberElsewhere(
     .orderBy(asc(apMapChainMember.id))
     .limit(1);
   return row ?? null;
-}
-
-/**
- * Create a connection and its chain-membership write-through atomically: one
- * transaction, one `connection.create` + at most one `chain.member.added`
- * event. The returned payload is the connection's (the route's response shape
- * is unchanged); the member event reaches every client — the initiator
- * included — over realtime. Re-fires the webhook enqueue for the connection
- * event after commit (joined-tx mode skips the per-commit enqueue); the
- * membership event is structural and does not notify.
- */
-export async function createConnectionWithChainMembership(
-  input: Omit<CreateConnectionInput, 'tx'>,
-  chain: ConnectionChainContext,
-): Promise<ActionResult<MapEventPayload>> {
-  try {
-    const { payload, eventId } = await db.transaction(async (tx) => {
-      const created = await createConnection({ ...input, tx });
-      if (!created.ok) throw new Error(created.error);
-      if (created.data.kind !== 'connection.create') throw new Error('Unexpected create payload.');
-      await attachChainMemberOnConnection(tx, {
-        mapId: input.mapId,
-        characterId: input.characterId,
-        chainId: chain.chainId,
-        sourceMemberId: chain.sourceMemberId,
-        connectionId: BigInt(created.data.id),
-        sourceMapSystemId: input.sourceMapSystemId,
-        targetMapSystemId: input.targetMapSystemId,
-      });
-      return { payload: created.data, eventId: created.eventId };
-    });
-
-    await enqueueWebhookDispatch(input.mapId, eventId, new Date());
-    return { ok: true, data: payload, eventId };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Create connection failed.' };
-  }
 }

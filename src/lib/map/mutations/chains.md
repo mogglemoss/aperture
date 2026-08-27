@@ -23,27 +23,20 @@ Membership write-through for a system add charted into a chain tab, joined to th
 
 ### attachChainMemberOnConnection(tx, { mapId, characterId, chainId, sourceMemberId, connectionId, sourceMapSystemId, targetMapSystemId }): Promise<MapEventPayload | null>
 Membership write-through for a connection charted from a chain member. `sourceMemberId` must be a real member of the chain and one of the connection's endpoints must be its system; the *far* endpoint decides what accretes:
-- far side is the source member's **tree neighbour** in this chain (its parent or child) — the edge is already represented: backfills the member's `via_connection_id` when unset (re-broadcast as an upsert `chain.member.added`), else nothing.
+- far side is the source member's **tree neighbour** in this chain (its parent or child) — the edge is already represented: backfills the *child of the pair*'s `via_connection_id` when unset (via = how a member is reached from its parent; a root's stays null; re-broadcast as an upsert `chain.member.added`), else nothing.
 - far side really occurs **elsewhere in this chain** — a *loop* pointer-leaf child of the source member (`pointer_chain_id` = this chain).
 - far side really occurs **in another chain** of the map — a pointer-leaf naming the earliest such chain (lowest member id — a stable pick when several qualify); `pointerChainName` rides the payload.
 - far side occurs **nowhere** — a real occurrence, child of the source member, `via` this connection.
 
 Duplicate pointer-leaves under the same parent are suppressed (returns null). Returns the committed `chain.member.added` payload, or null when nothing changed.
 
-### createConnectionWithChainMembership(input, chain: ConnectionChainContext): Promise<ActionResult<MapEventPayload>>
-Orchestrator for the connections POST route: one `db.transaction` running `createConnection` + `attachChainMemberOnConnection`, so the connection and its membership commit atomically (one `connection.create` + at most one `chain.member.added`). Returns the **connection** payload (the route's response shape is unchanged); the member event reaches every client — the initiator included — over realtime. Re-fires `enqueueWebhookDispatch` for the connection event after commit (joined-tx mode skips the per-commit enqueue); the membership event is structural and does not notify webhooks.
-
----
-
 ### type CreateChainInput / RenameChainInput / DeleteChainInput / SystemAddChainContext / ConnectionChainContext
 Input bags for the helpers plus the two chain-context shapes the charting mutations accept (`SystemAddChainContext` = `{ chainId, parentMemberId | null }`, `ConnectionChainContext` = `{ chainId, sourceMemberId }`). Re-exported from `src/types/index.ts`.
 
 ### Depends On
-- `commitMapEvent`, `enqueueWebhookDispatch` (`./core`) — the single commit primitive + the post-commit webhook enqueue for the orchestrator.
-- `createConnection` (`./connections`) — joined by the orchestrator.
-- `db` (`@/db/client`) — opens the orchestrator transaction.
+- `commitMapEvent` (`./core`) — the single commit primitive.
 - `apMapChain`, `apMapChainMember`, `chainKind` (Drizzle schema).
 - `mapEventPayloadSchema` variants `chain.*` (`@/lib/realtime/protocol`).
 
 ### Notes
-- **No `import 'server-only'`** — like `core.ts`, this module is the seam for the plain-Node graphile-worker fold path (tracking-driven membership, Stage 2b), which crashes on the bare `server-only` throw.
+- **No `import 'server-only'` — direct or transitive** — like `core.ts`, this module is the seam for the plain-Node graphile-worker fold path (`locationCommit.ts` calls `attachChainMemberOnConnection` for tracking-driven membership), which crashes on the `server-only` import. That forbids importing guarded siblings (`connections.ts`, `systems.ts`, …); route-only orchestration joining chains with those modules lives on their side (`createConnectionWithChainMembership` in `connections.ts`).

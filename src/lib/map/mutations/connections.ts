@@ -1,7 +1,9 @@
 import 'server-only';
 import { and, eq, type InferInsertModel } from 'drizzle-orm';
+import { db } from '@/db/client';
 import { apMapConnection, connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema';
-import { commitMapEvent, type ActionResult, type Tx } from './core';
+import { commitMapEvent, enqueueWebhookDispatch, type ActionResult, type Tx } from './core';
+import { attachChainMemberOnConnection, type ConnectionChainContext } from './chains';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -241,4 +243,43 @@ export function updateConnection(
       return out;
     },
   });
+}
+
+/**
+ * Create a connection and its chain-membership write-through atomically: one
+ * transaction, one `connection.create` + at most one `chain.member.added`
+ * event. The returned payload is the connection's (the route's response shape
+ * is unchanged); the member event reaches every client — the initiator
+ * included — over realtime. Re-fires the webhook enqueue for the connection
+ * event after commit (joined-tx mode skips the per-commit enqueue); the
+ * membership event is structural and does not notify. Lives here rather than
+ * in `chains.ts` so that module stays importable from the plain-Node worker
+ * (this file's `'server-only'` guard is route-territory).
+ */
+export async function createConnectionWithChainMembership(
+  input: Omit<CreateConnectionInput, 'tx'>,
+  chain: ConnectionChainContext,
+): Promise<ActionResult<MapEventPayload>> {
+  try {
+    const { payload, eventId } = await db.transaction(async (tx) => {
+      const created = await createConnection({ ...input, tx });
+      if (!created.ok) throw new Error(created.error);
+      if (created.data.kind !== 'connection.create') throw new Error('Unexpected create payload.');
+      await attachChainMemberOnConnection(tx, {
+        mapId: input.mapId,
+        characterId: input.characterId,
+        chainId: chain.chainId,
+        sourceMemberId: chain.sourceMemberId,
+        connectionId: BigInt(created.data.id),
+        sourceMapSystemId: input.sourceMapSystemId,
+        targetMapSystemId: input.targetMapSystemId,
+      });
+      return { payload: created.data, eventId: created.eventId };
+    });
+
+    await enqueueWebhookDispatch(input.mapId, eventId, new Date());
+    return { ok: true, data: payload, eventId };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Create connection failed.' };
+  }
 }

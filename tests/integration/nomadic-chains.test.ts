@@ -17,10 +17,10 @@ import {
 import {
   attachChainMemberOnSystemAdd,
   createChain,
-  createConnectionWithChainMembership,
   deleteChain,
   renameChain,
 } from '@/lib/map/mutations/chains';
+import { createConnectionWithChainMembership } from '@/lib/map/mutations/connections';
 import { addSystemWithStargateLinks, removeSystem } from '@/lib/map/mutations/systems';
 import { loadMapForView } from '@/lib/map/loadMap';
 import { mapEventPayloadSchema } from '@/lib/realtime/protocol';

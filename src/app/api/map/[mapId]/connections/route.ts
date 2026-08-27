@@ -2,8 +2,10 @@ import 'server-only';
 import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
-import { createConnection } from '@/lib/map/mutations/connections';
-import { createConnectionWithChainMembership } from '@/lib/map/mutations/chains';
+import {
+  createConnection,
+  createConnectionWithChainMembership,
+} from '@/lib/map/mutations/connections';
 import { updateSystem } from '@/lib/map/mutations/systems';
 import { assignTagOnConnect } from '@/lib/tagging/service';
 import { logger } from '@/lib/log/logger';

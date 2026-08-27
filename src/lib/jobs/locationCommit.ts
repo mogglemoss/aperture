@@ -1,7 +1,8 @@
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMapConnection, apMapSystem } from '@/db/schema';
+import { apMapChain, apMapChainMember, apMapConnection, apMapSystem } from '@/db/schema';
 import { commitMapEvent } from '@/lib/map/mutations/core';
+import { attachChainMemberOnConnection } from '@/lib/map/mutations/chains';
 import { buildSystemNode } from '@/lib/map/systemNode';
 import { findOpenPosition, type Point } from '@/lib/map/placement';
 import { assignTagOnAdd, assignTagOnConnect } from '@/lib/tagging/service';
@@ -11,10 +12,11 @@ const jobLog = getLogger('job');
 
 /**
  * The per-map fold for a detected wormhole jump from the
- * location-poll. Wraps the three `commitMapEvent` calls that turn
+ * location-poll. Wraps the `commitMapEvent` calls that turn
  * "character moved from system A to system B" into the same set of events a
- * user-driven `addSystem` + `addSystem` + `createConnection` would produce —
- * minus the events that would be redundant.
+ * user-driven `addSystem` + `addSystem` + `createConnection` (charted from a
+ * chain tab, where a chain holds the from-system) would produce — minus the
+ * events that would be redundant.
  *
  * Idempotency rules:
  *   - If a `ap_map_system` row already exists with `visible = true`, no
@@ -101,6 +103,15 @@ export async function foldWormholeJumpOntoMap(args: FoldArgs): Promise<FoldResul
     toOutcome.mapSystemId,
     args.characterId,
   );
+  // Tracking-driven chain membership: the jump grows every chain that holds a
+  // real occurrence of the from-system (nomadic-chains Stage 2b).
+  await attachChainMemberships({
+    mapId: args.mapId,
+    characterId: args.characterId,
+    connectionId: connection.connectionId,
+    fromMapSystemId: fromOutcome.mapSystemId,
+    toMapSystemId: toOutcome.mapSystemId,
+  });
   // Auto-tagging. On a 0121 map the jump roots the destination as
   // a child of the system the pilot came from; tag it as a separate
   // `system.updated`. Run whether or not the edge was newly created (a prior
@@ -129,6 +140,57 @@ async function visibleMapSystemId(mapId: bigint, systemId: number): Promise<bigi
       ),
     );
   return row?.id ?? null;
+}
+
+/**
+ * Fan a tracked jump out to the chains it grows: every chain on the map holding
+ * a *real* occurrence of the from-system — shared chains, plus the jumping
+ * pilot's own personal chains (a foreign personal chain answers only to its
+ * owner, tracking included; the write-path guard would refuse it anyway).
+ * Each chain gets the connection-attach semantics of the traversed hole
+ * (`attachChainMemberOnConnection`): a tree-adjacent shuttle no-ops after the
+ * one-time via backfill, a landing on an unchained system accretes a real child
+ * member, a landing on an already-chained system accretes one pointer-leaf per
+ * parent. Chains attach in creation order (chain id) so, when several qualify,
+ * the earliest gets the real occurrence and the rest point at it — stable
+ * across retries. Each attach is its own transaction, matching the fold's
+ * per-step pattern: a mid-fan-out failure leaves the completed attaches
+ * committed and the retry tick no-ops over them.
+ */
+async function attachChainMemberships(args: {
+  mapId: bigint;
+  characterId: bigint;
+  connectionId: bigint;
+  fromMapSystemId: bigint;
+  toMapSystemId: bigint;
+}): Promise<void> {
+  const holders = await db
+    .select({ chainId: apMapChain.id, memberId: apMapChainMember.id })
+    .from(apMapChainMember)
+    .innerJoin(apMapChain, eq(apMapChainMember.chainId, apMapChain.id))
+    .where(
+      and(
+        eq(apMapChain.mapId, args.mapId),
+        eq(apMapChainMember.mapSystemId, args.fromMapSystemId),
+        isNull(apMapChainMember.pointerChainId),
+        or(eq(apMapChain.kind, 'shared'), eq(apMapChain.ownerCharacterId, args.characterId)),
+      ),
+    )
+    .orderBy(asc(apMapChain.id));
+
+  for (const holder of holders) {
+    await db.transaction((tx) =>
+      attachChainMemberOnConnection(tx, {
+        mapId: args.mapId,
+        characterId: args.characterId,
+        chainId: holder.chainId,
+        sourceMemberId: holder.memberId,
+        connectionId: args.connectionId,
+        sourceMapSystemId: args.fromMapSystemId,
+        targetMapSystemId: args.toMapSystemId,
+      }),
+    );
+  }
 }
 
 interface EnsureSystemOutcome {
