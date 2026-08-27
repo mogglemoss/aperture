@@ -513,6 +513,29 @@ export type {
   ConnectionChainContext,
 } from '@/lib/map/mutations/chains';
 
+// Chain-mode forest layout types (src/lib/map/chains/layout.ts).
+export type {
+  ChainLayoutOrientation,
+  ChainLayoutParams,
+  ChainLayoutMemberRef,
+  ChainLayoutNode,
+  ChainLayoutEdge,
+  ChainTreeLayout,
+  ChainRef,
+  UnassignedSystemNode,
+  ChainForestBlock,
+  ChainForestLayout,
+  ShelfBlock,
+  ShelfPosition,
+} from '@/lib/map/chains/layout';
+
+// Chain LOD collapse decision + blob content contract (src/lib/map/chains/collapse.ts).
+export type {
+  ChainCollapseInput,
+  ChainBlobExit,
+  ChainBlobContent,
+} from '@/lib/map/chains/collapse';
+
 // Signature mutation input types (src/lib/map/mutations/signatures.ts).
 export type {
   CreateSignatureInput,
