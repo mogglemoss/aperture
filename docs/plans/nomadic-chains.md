@@ -48,7 +48,7 @@
 
 ## Stage 3 — Forest layout engine + LOD spec
 **Mode:** Execute
-**Status:** todo
+**Status:** done — a86bcf6
 **Goal:** A pure, tested layout module: memberships in → positioned occurrence nodes + edges out, for one tree or the whole forest, plus the blob-collapse decision function.
 **References:** this stage's spec below (the design is settled — do not re-derive it); Stage 1's `ap_map_chain_member` shape; `src/components/map/MapCanvas.md` only for the consuming render path's expectations (Stage 4).
 **Touches:** new `src/lib/map/chains/layout.ts`, `src/lib/map/chains/collapse.ts` (+ companions), `tests/unit/chain-layout.test.ts` (+ companion). Pure modules — no components, no schema, no API.
