@@ -174,7 +174,7 @@ export const apertureConfig = {
   MAX_MAPS_PER_SCOPE: { private: 3, corp: 1, alliance: 1 },
 
   /** Per-map system ceiling, enforced where `ap_map_system.visible = true`. */
-  MAX_SYSTEMS_PER_MAP: 400,
+  MAX_SYSTEMS_PER_MAP: 1500,
 
   /** Max length of a map note's `title` (the on-node label). Enforced app-layer (Zod). */
   MAP_NOTE_TITLE_MAX_LENGTH: 20,

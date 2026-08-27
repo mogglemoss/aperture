@@ -590,20 +590,47 @@ export type SystemDataBatch = {
 };
 
 /**
+ * Per-request id cap of `GET /api/map/[mapId]/system-data` (the route 400s
+ * above it). A map can hold `MAX_SYSTEMS_PER_MAP` systems — several times this —
+ * so a whole-map refresh must chunk; the cap also keeps each request's query
+ * string well under Node's 16 KB header ceiling.
+ */
+const SYSTEM_DATA_MAX_PER_REQUEST = 256;
+
+/**
  * Backfill read-side per-system data (sov / FW / incursion intel + 24h activity
  * stats + structure intel + global system notes) for systems added after the initial server render.
  * Read-only (view rights) — returns a plain `FetchResult`, no `eventId`.
  * `MapCanvas` calls this when new system ids appear in `viewData` and merges the
  * result into its intel / stats / structures state, so decorators and sidebar
- * modules fill in without a page reload.
+ * modules fill in without a page reload. Requests are chunked to the route's
+ * per-request cap and merged; any failed chunk fails the whole call (callers'
+ * retry semantics stay all-or-nothing).
  */
-export function fetchSystemData(args: {
+export async function fetchSystemData(args: {
   mapId: string;
   systemIds: number[];
 }): Promise<FetchResult<SystemDataBatch>> {
-  return readFetch<SystemDataBatch>(
-    `/api/map/${args.mapId}/system-data?systems=${args.systemIds.join(',')}`,
+  const chunks: number[][] = [];
+  for (let i = 0; i < args.systemIds.length; i += SYSTEM_DATA_MAX_PER_REQUEST) {
+    chunks.push(args.systemIds.slice(i, i + SYSTEM_DATA_MAX_PER_REQUEST));
+  }
+  const results = await Promise.all(
+    chunks.map((ids) =>
+      readFetch<SystemDataBatch>(`/api/map/${args.mapId}/system-data?systems=${ids.join(',')}`),
+    ),
   );
+  const failed = results.find((r) => !r.ok);
+  if (failed) return failed;
+  const merged: SystemDataBatch = { intel: {}, stats: {}, structures: {}, systemNotes: {} };
+  for (const result of results) {
+    if (!result.ok) continue;
+    Object.assign(merged.intel, result.data.intel);
+    Object.assign(merged.stats, result.data.stats);
+    Object.assign(merged.structures, result.data.structures);
+    Object.assign(merged.systemNotes, result.data.systemNotes);
+  }
+  return { ok: true, data: merged };
 }
 
 /**
