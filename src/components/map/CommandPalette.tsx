@@ -29,8 +29,11 @@ export function CommandPalette({ context }: { context: KeyboardActionContext }) 
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return;
+      const chord = e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey);
+      const slash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (!chord && !slash) return;
       if (isEditable(e.target)) return;
+      if (e.target instanceof HTMLElement && e.target.closest('[role="dialog"]')) return;
       e.preventDefault();
       setOpen((prev) => !prev);
     }

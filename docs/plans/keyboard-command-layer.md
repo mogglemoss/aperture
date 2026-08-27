@@ -13,11 +13,16 @@
 
 ## Stage 2 — Single-key operations + graph navigation
 **Mode:** Execute
-**Status:** todo
-**Goal:** With a system selected: bare keys for the hot loop (e.g. `e` cycle EOL stage, `m` cycle mass, `l` lock toggle, `r` rally toggle, `x`/`Del` remove with the existing confirm, `n` focus the note add dialog, `/` open the palette pre-filtered). `h/j/k/l` + arrows move selection to the nearest connected system in that direction (graph-adjacent first, falling back to nearest by position); `Esc` clears selection. A `?` overlay lists the bindings.
+**Status:** done — 07a5e7a
+**Goal:** Bare keys for the hot loop: `s` cycle status, `L` lock toggle, `r` rally toggle on the selected system; `e` cycle EOL stage, `m` cycle mass on the selected connection; `/` opens the palette. `h/j/k/l` + arrows move selection to the nearest connected system in that direction (graph-adjacent first, falling back to nearest by position); `Esc` clears selection. A `?` overlay lists the bindings. **No remove keybind** — MapCanvas carries a deliberate invariant that no bare key may delete systems (a stray keypress must never wipe the map); removal stays in the palette, where invoking it is a deliberate two-step. Lock is `L` (capital) because `l` is vim-right. The note-dialog focus key is dropped (the dialog is module-internal state; not worth a refactor).
 **References:** `src/components/map/MapCanvas.md` (selection + callbacks), Stage 1's palette (shares the action registry so bindings and palette entries can't drift apart).
 **Touches:** new `src/lib/map/keyboardActions.ts` (+ `.md`) — the shared action registry; `src/components/map/MapCanvas.tsx`; `src/components/map/CommandPalette.tsx`.
 **Done when:** the listed keys act on the selected system and never fire while any input/textarea/dialog has focus; hjkl traverses a 10-system chain end to end; the `?` overlay matches the actual bindings; checks green.
+
+## Notes
+_(appended by executing sessions — non-obvious findings only)_
+- MapCanvas carries a deliberate invariant against any bare delete keybind (a stray Backspace must never wipe systems); Stage 2's original `x`/`Del` remove key was dropped for it and the spec rewritten before execution. Removal is palette-only.
+- Base UI dialogs focus their popup but keydown targets inside can be plain divs, so the hotkey layer's stand-down check is `target.closest('[role="dialog"]')`, not just the editable-tag test.
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_

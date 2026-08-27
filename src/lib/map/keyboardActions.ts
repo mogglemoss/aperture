@@ -53,6 +53,32 @@ const STATUS_LABELS: Record<(typeof SYSTEM_STATUSES)[number], string> = {
   unscanned: 'Unscanned',
 };
 
+/**
+ * The bare-key bindings, for the `?` overlay (and as the single reference the
+ * `MapHotkeys` handler and the overlay both render from, so they cannot
+ * drift). There is deliberately no remove/delete key — a stray keypress must
+ * never wipe systems off the map (see the group-delete note in `MapCanvas`);
+ * removal lives in the palette, where invoking it is a deliberate two-step.
+ * Lock is capital `L` because lowercase `l` is vim-right.
+ */
+export const KEY_BINDINGS: ReadonlyArray<{ keys: string; does: string }> = [
+  { keys: '⌘K / Ctrl-K, /', does: 'Open the command palette' },
+  { keys: 'h j k l, arrows', does: 'Move selection to the nearest connected system' },
+  { keys: 'Esc', does: 'Clear selection' },
+  { keys: 's', does: 'Cycle status on the selected system' },
+  { keys: 'L', does: 'Lock / unlock the selected system' },
+  { keys: 'r', does: 'Set / clear rally on the selected system' },
+  { keys: 'e', does: 'Cycle EOL stage on the selected connection' },
+  { keys: 'm', does: 'Cycle mass on the selected connection' },
+  { keys: '?', does: 'Show this overlay' },
+];
+
+/** The next value in a cycle list, wrapping. */
+export function cycleNext<T>(values: readonly T[], current: T): T {
+  const i = values.indexOf(current);
+  return values[(i + 1) % values.length]!;
+}
+
 export function buildPaletteActions(ctx: KeyboardActionContext): PaletteAction[] {
   const actions: PaletteAction[] = [];
   const system = ctx.selectedSystem;

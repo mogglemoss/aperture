@@ -17,5 +17,11 @@ The selection plus callbacks: `selectedSystem`, `selectedConnection`, `homeMapSy
 - **Map**: "Add system…" (opens `AddSystemDialog`).
 - **Jump to system**: one entry per visible system (alias + name), calling `jumpToSystem(systemId)`.
 
+### KEY_BINDINGS
+The bare-key binding list (`{ keys, does }[]`) — the single reference both the `MapHotkeys` handler and its `?` overlay render from. Deliberately contains no remove/delete key; lock is capital `L` because lowercase `l` is vim-right.
+
+### cycleNext(values, current)
+The next value in a cycle list, wrapping.
+
 ### Depends On
 - `enumLabels.ts` (client-safe enum value lists + labels), `UpdateSystemBody` / `UpdateConnectionBody` (`@/lib/map/client`).

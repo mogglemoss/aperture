@@ -141,6 +141,7 @@ import { MapActiveCharProvider, useMapActiveChar } from './MapActiveCharContext'
 import { MapSignatureIndicatorProvider } from './MapSignatureIndicatorContext';
 import { SignaturePasteHotkey } from './SignaturePasteHotkey';
 import { CommandPalette } from './CommandPalette';
+import { MapHotkeys, type MoveDirection } from './MapHotkeys';
 import type { KeyboardActionContext } from '@/lib/map/keyboardActions';
 import { TransitSignaturePrompt } from './TransitSignaturePrompt';
 import { MapTravelProvider, TravelBridge } from './MapTravelContext';
@@ -1975,6 +1976,66 @@ export function MapCanvas({
     [viewData.systems],
   );
 
+  // Keyboard selection movement: graph-adjacent neighbor in the pressed
+  // direction first (within a generous cone), else nearest system by position
+  // in that direction; with nothing selected, land on Home (or the first
+  // system). Positions come from the live xyflow nodes.
+  const onMoveSelection = useCallback(
+    (dir: MoveDirection) => {
+      const inst = flowInstance.current;
+      const current = selectedSystem;
+      if (!current) {
+        const start =
+          viewData.systems.find((s) => s.id === viewData.map.homeMapSystemId) ??
+          viewData.systems[0];
+        if (start) onJumpToSystem(start.systemId);
+        return;
+      }
+      const posOf = (id: string) => {
+        const n = inst?.getNode(id);
+        return n ? { x: n.position.x, y: n.position.y } : null;
+      };
+      const cur = posOf(current.id);
+      if (!cur) return;
+      const vec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir] as [
+        number,
+        number,
+      ];
+      const pick = (ids: Iterable<string>) => {
+        let best: { id: string; d: number } | null = null;
+        for (const id of ids) {
+          if (id === current.id) continue;
+          const p = posOf(id);
+          if (!p) continue;
+          const dx = p.x - cur.x;
+          const dy = p.y - cur.y;
+          const proj = dx * vec[0] + dy * vec[1];
+          if (proj <= 0) continue;
+          const ortho = Math.abs(dx * vec[1]) + Math.abs(dy * vec[0]);
+          if (ortho > proj * 1.75) continue;
+          const d = Math.hypot(dx, dy);
+          if (!best || d < best.d) best = { id, d };
+        }
+        return best?.id ?? null;
+      };
+      const neighbors = new Set<string>();
+      for (const c of viewData.connections) {
+        if (c.source === current.id) neighbors.add(c.target);
+        if (c.target === current.id) neighbors.add(c.source);
+      }
+      const nextId = pick(neighbors) ?? pick(viewData.systems.map((s) => s.id));
+      if (!nextId) return;
+      const next = viewData.systems.find((s) => s.id === nextId);
+      if (next) onJumpToSystem(next.systemId);
+    },
+    [selectedSystem, viewData.systems, viewData.connections, viewData.map.homeMapSystemId, onJumpToSystem],
+  );
+
+  const onClearSelection = useCallback(() => {
+    setSelected(null);
+    setSelectedSystemIds(new Set());
+  }, []);
+
   // Command-palette action context: the current selection plus the exact
   // callbacks the equivalent buttons use (see `keyboardActions.ts`).
   const selectedConnection = useMemo(
@@ -2299,6 +2360,11 @@ export function MapCanvas({
         )}
         <MapUnderglowBridge systems={viewData.systems} />
         <CommandPalette context={paletteContext} />
+        <MapHotkeys
+          context={paletteContext}
+          onMoveSelection={onMoveSelection}
+          onClearSelection={onClearSelection}
+        />
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}
