@@ -2262,8 +2262,14 @@ export function MapCanvas({
 
   // Chain mode has no pane menu (its "Add system here" semantics belong to the
   // free canvas) — just suppress the native browser menu.
+  // The free-canvas pane menu is position-bound (add-at-cursor, notes, paste
+  // targets), which a generated layout can't honor — so a chain/forest pane
+  // right-click opens the Add System dialog directly instead of a menu.
+  // `onAddSystem` threads the active chain (All/forest ⇒ chainless/Unassigned);
+  // an empty chain's first add becomes its root.
   const onChainPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
     event.preventDefault();
+    setAddSystemOpen(true);
   }, []);
 
   // ---- Chain lifecycle (tab strip callbacks) -----------------------------
