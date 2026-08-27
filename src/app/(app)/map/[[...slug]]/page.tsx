@@ -12,6 +12,7 @@ import { structuresForSystems } from '@/lib/structures/read';
 import { systemNotesForSystems } from '@/lib/system-notes/read';
 import {
   getAccountCharacters,
+  getChainBlobThreshold,
   getConnectionTravelAnimation,
   getMainCharacterId,
   getMapLayout,
@@ -59,6 +60,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     settings,
     travelAnimation,
     signatureIndicators,
+    chainBlobThreshold,
     accountCharacters,
     mapLayout,
     routeConfig,
@@ -74,6 +76,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
     loadMapSettings(BigInt(session.characterId), mapId),
     getConnectionTravelAnimation(session.userId),
     getSignatureIndicatorPrefs(session.userId),
+    getChainBlobThreshold(session.userId),
     getAccountCharacters(session.userId),
     getMapLayout(session.userId),
     loadRouteConfig(session.userId),
@@ -111,6 +114,7 @@ export default async function MapPage({ params }: { params: Promise<{ slug?: str
         liveShares={liveShares}
         travelAnimation={travelAnimation}
         signatureIndicators={signatureIndicators}
+        chainBlobThreshold={chainBlobThreshold}
         viewerCharacterIds={viewerCharacterIds}
         viewerCharacters={viewerCharacters}
         mainCharacterId={mainCharacterId == null ? null : Number(mainCharacterId)}

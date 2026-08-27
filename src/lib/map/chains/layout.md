@@ -30,8 +30,8 @@ Shelf-packs block footprints into rows in the caller's order, wrapping at `viewp
 ---
 
 ### layoutForest(args): ChainForestLayout
-The All view: lays out every chain via `layoutChainTree`, shelf-packs the blocks via `packShelves` (using `params.gapX`/`gapY` between blocks/rows). Block order is shared chains then personal, each by creation (id) order, with the "Unassigned" pseudo-chain last — never by size. A chain with no members contributes an empty 0×0 block. Re-flow on viewport resize is accepted.
+The All view: lays out every chain via `layoutChainTree`, shelf-packs the blocks via `packShelves` (block/row gaps from `blockGap`, defaulting to `params.gapX`/`gapY`). Block order is shared chains then personal, each by creation (id) order, with the "Unassigned" pseudo-chain last — never by size. A chain with no members contributes an empty 0×0 block. Re-flow on viewport resize is accepted.
 
-**Parameters:** `{ chains: ChainRef[], members: ChainLayoutMemberRef[], unassignedSystemIds: string[], params, orientation, viewportWidth }` — `unassignedSystemIds` are the chainless `ap_map_system.id`s, laid as a plain grid wrapping at `viewportWidth`, ordered by system id.
+**Parameters:** `{ chains: ChainRef[], members: ChainLayoutMemberRef[], unassignedSystemIds: string[], params, orientation, viewportWidth, blockGap? }` — `unassignedSystemIds` are the chainless `ap_map_system.id`s, laid as a plain grid wrapping at `viewportWidth`, ordered by system id; `blockGap` (`{ x, y }`) spaces shelf blocks/rows wider than the intra-tree gaps for visual chain separation.
 
 **Returns:** `{ blocks, width, height }` — each `ChainForestBlock` is `{ kind: 'chain', chainId, nodes, edges, … }` or `{ kind: 'unassigned', systems, … }` with its shelf position `x`/`y`; node coords stay block-local (add the block offset for canvas coords). `width`/`height` bound the whole forest.

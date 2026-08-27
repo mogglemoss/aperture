@@ -338,8 +338,11 @@ export function layoutForest(args: {
   params: ChainLayoutParams;
   orientation: ChainLayoutOrientation;
   viewportWidth: number;
+  /** Gap between shelf blocks (visual chain separation); defaults to `params.gapX`/`gapY`. */
+  blockGap?: { x: number; y: number };
 }): ChainForestLayout {
-  const { chains, members, unassignedSystemIds, params, orientation, viewportWidth } = args;
+  const { chains, members, unassignedSystemIds, params, orientation, viewportWidth, blockGap } =
+    args;
 
   const ordered = [...chains].sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'shared' ? -1 : 1;
@@ -354,7 +357,12 @@ export function layoutForest(args: {
 
   const footprints: ShelfBlock[] = trees.map((t) => ({ width: t.width, height: t.height }));
   if (unassigned) footprints.push({ width: unassigned.width, height: unassigned.height });
-  const positions = packShelves(footprints, viewportWidth, params.gapX, params.gapY);
+  const positions = packShelves(
+    footprints,
+    viewportWidth,
+    blockGap?.x ?? params.gapX,
+    blockGap?.y ?? params.gapY,
+  );
 
   const blocks: ChainForestBlock[] = trees.map((tree, i) => {
     const pos = positions[i] ?? { x: 0, y: 0 };

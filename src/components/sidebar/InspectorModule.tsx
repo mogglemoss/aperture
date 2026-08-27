@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Flag, Hourglass, Trash2, User, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { connectionExpiredSinceMs, connectionTimeLeftMs } from '@/lib/map/connectionState';
@@ -17,11 +17,14 @@ import { Tooltip } from '@base-ui/react/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConnectionMassLog } from '@/components/sidebar/ConnectionMassLog';
 import type {
+  MapChain,
   MapConnectionEdge,
   MapNote,
   MapSystemNode,
   MapViewData,
 } from '@/types';
+import { buildChainBlobContent } from '@/lib/map/chains/view';
+import { formatChainBlobLine } from '@/lib/map/chains/collapse';
 import type {
   UpdateConnectionBody,
   UpdateNoteBody,
@@ -54,7 +57,8 @@ const NONE_JUMP_MASS = '__none__';
 export type SelectionRef =
   | { kind: 'system'; id: string }
   | { kind: 'connection'; id: string }
-  | { kind: 'note'; id: string };
+  | { kind: 'note'; id: string }
+  | { kind: 'chain'; id: string };
 
 export function InspectorModule(props: {
   selected: SelectionRef | null;
@@ -81,6 +85,12 @@ export function InspectorModule(props: {
         onRemove={() => props.onSystemRemove(system.id)}
       />
     );
+  }
+
+  if (selected.kind === 'chain') {
+    const chain = viewData.chains.find((c) => c.id === selected.id);
+    if (!chain) return <EmptyInspector />;
+    return <ChainInspector key={chain.id} chain={chain} viewData={viewData} />;
   }
 
   if (selected.kind === 'note') {
@@ -118,6 +128,52 @@ function EmptyInspector() {
     <Card>
       <CardContent className="text-xs text-muted-foreground">
         Select a system, connection, or note to edit.
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chain (read-only summary — a blob click's sidebar surface)
+// ---------------------------------------------------------------------------
+
+function ChainInspector({ chain, viewData }: { chain: MapChain; viewData: MapViewData }) {
+  const content = useMemo(
+    () =>
+      buildChainBlobContent({
+        chain,
+        members: viewData.chainMembers,
+        systems: viewData.systems,
+        criticalConnectionIds: new Set(
+          viewData.connections.filter((c) => c.eolStage === 'critical').map((c) => c.id),
+        ),
+      }),
+    [chain, viewData.chainMembers, viewData.systems, viewData.connections],
+  );
+  const KindIcon = chain.kind === 'shared' ? Users : User;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-1.5 text-sm">
+          <KindIcon className="size-3.5 shrink-0 opacity-70" />
+          <span className="truncate">{chain.name}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+        <div>{chain.kind === 'shared' ? 'Shared chain' : 'Personal chain'}</div>
+        <div>{formatChainBlobLine(content)}</div>
+        {content.hasRally && (
+          <div className="flex items-center gap-1 text-amber-400">
+            <Flag className="size-3.5 shrink-0" />
+            Rally point active
+          </div>
+        )}
+        {content.hasEolCritical && (
+          <div className="flex items-center gap-1 text-red-400">
+            <Hourglass className="size-3.5 shrink-0" />
+            EOL-critical connection in this chain
+          </div>
+        )}
       </CardContent>
     </Card>
   );

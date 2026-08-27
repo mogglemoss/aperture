@@ -53,7 +53,8 @@ import {
   snapToGrid as snapPointToGrid,
   type Point,
 } from '@/lib/map/placement';
-import { buildChainCanvas, sortChainsForTabs } from '@/lib/map/chains/view';
+import { buildChainCanvas, buildForestCanvas, sortChainsForTabs } from '@/lib/map/chains/view';
+import { CHAIN_BLOB_ZOOM_CUTOFF } from '@/lib/map/chains/collapse';
 import {
   addSystemOnServer,
   createChainOnServer,
@@ -161,7 +162,14 @@ import {
   type ChainCanvasNode,
   type ChainFocusRequest,
 } from './ChainCanvas';
-import { ChainTabStrip } from './ChainTabStrip';
+import { ALL_CHAINS_TAB, ChainTabStrip } from './ChainTabStrip';
+import {
+  ChainForestCanvas,
+  CHAIN_FOREST_BLOCK_GAP,
+  CHAIN_FOREST_LABEL_OFFSET,
+  type ChainForestCanvasNode,
+} from './ChainForestCanvas';
+import type { ChainBlobNodeData, ChainLabelNodeData } from './ChainBlobNode';
 import type { ChainPointerNodeData } from './ChainPointerNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
@@ -297,7 +305,8 @@ function buildWormholeByConnection(
 }
 
 // Per-map chain-view display preference (nomadic-chains): which tab is active
-// (null = All / free canvas) and which way the tree grows. Client-persisted in
+// (null = "Free" / free canvas — the default; `ALL_CHAINS_TAB` = the All
+// forest; else a chain id) and which way trees grow. Client-persisted in
 // localStorage beside the viewport pref — a display toggle, no schema.
 type ChainViewPref = { activeChainId: string | null; orientation: ChainLayoutOrientation };
 const chainViewStorageKey = (mapId: string) => `aperture:map:${mapId}:chainView`;
@@ -330,6 +339,7 @@ export function MapCanvas({
   liveShares: initialLiveShares,
   travelAnimation,
   signatureIndicators,
+  chainBlobThreshold,
   viewerCharacterIds,
   viewerCharacters,
   mainCharacterId,
@@ -357,6 +367,8 @@ export function MapCanvas({
   travelAnimation: boolean;
   /** Viewer's resolved stale/unscanned indicator prefs (threshold + toggles). */
   signatureIndicators: SignatureIndicatorPrefs;
+  /** Viewer's `ap_user.chain_blob_threshold` — a chain larger than this blobs in the All view. */
+  chainBlobThreshold: number;
   /** Viewer's account character ids — matched against presence for the CTRL+V fast-paste location check. */
   viewerCharacterIds: number[];
   /** Viewer's active characters (id + name) for the route planner's source picker. */
@@ -599,8 +611,9 @@ export function MapCanvas({
   const lastViewportRef = useRef<Viewport | null>(initialViewport);
 
   // ---- Chain mode (nomadic-chains) ---------------------------------------
-  // Which tab is active (null = All / free canvas) + tree orientation; a
-  // per-user display preference persisted per map in localStorage.
+  // Which tab is active (null = Free canvas, ALL_CHAINS_TAB = forest, else a
+  // chain id) + tree orientation; a per-user display preference persisted per
+  // map in localStorage.
   const [chainView, setChainView] = useState<ChainViewPref>(() => {
     try {
       const raw = localStorage.getItem(chainViewStorageKey(data.map.id));
@@ -657,12 +670,55 @@ export function MapCanvas({
         : null,
     [visibleChains, chainView.activeChainId],
   );
+  // The All-view forest tab (`ALL_CHAINS_TAB` sentinel — never a chain id).
+  const isForestTab = chainView.activeChainId === ALL_CHAINS_TAB;
   // Mirrored into a ref so mode-agnostic callbacks (jump-to-system, sig search)
-  // can branch without re-memoizing on every tab switch.
+  // can branch without re-memoizing on every tab switch. Non-null for a chain
+  // tab AND the forest tab — both center through a ChainFocusRequest (the
+  // free-canvas flow instance is unmounted in either).
   const activeChainIdRef = useRef<string | null>(null);
   useEffect(() => {
-    activeChainIdRef.current = activeChain?.id ?? null;
-  }, [activeChain]);
+    activeChainIdRef.current = activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null);
+  }, [activeChain, isForestTab]);
+
+  // ---- All-view forest state (Stage 5) -----------------------------------
+  // Live forest-canvas zoom, re-rendered ONLY when it crosses the blob cutoff
+  // (the collapse decision is the sole zoom consumer, so mid-pan zoom changes
+  // that don't flip any blob never rebuild the node arrays).
+  const [forestZoom, setForestZoom] = useState(1);
+  const onForestZoom = useCallback((zoom: number) => {
+    setForestZoom((prev) =>
+      (prev < CHAIN_BLOB_ZOOM_CUTOFF) === (zoom < CHAIN_BLOB_ZOOM_CUTOFF) ? prev : zoom,
+    );
+  }, []);
+  // Session-local per-chain "keep expanded" overrides (the blob's expand
+  // affordance) — deliberately not persisted.
+  const [expandedChainIds, setExpandedChainIds] = useState<Set<string>>(() => new Set());
+  const onToggleChainExpand = useCallback((chainId: string) => {
+    setExpandedChainIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chainId)) next.delete(chainId);
+      else next.add(chainId);
+      return next;
+    });
+  }, []);
+  // Shelf-wrap width for the forest layout, measured off the forest wrapper
+  // (deadbanded so tiny grid resizes don't re-pack the shelf).
+  const [forestViewportWidth, setForestViewportWidth] = useState(1200);
+  const forestResizeObserver = useRef<ResizeObserver | null>(null);
+  const forestWrapperRef = useCallback((el: HTMLDivElement | null) => {
+    forestResizeObserver.current?.disconnect();
+    forestResizeObserver.current = null;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      const width = Math.round(el.clientWidth);
+      if (width > 0) {
+        setForestViewportWidth((prev) => (Math.abs(prev - width) < 40 ? prev : width));
+      }
+    });
+    observer.observe(el);
+    forestResizeObserver.current = observer;
+  }, []);
 
   // ---- Free-form dashboard layout (map-layout-builder) -------------------
   // Seeded from the saved per-account layout; `null` ⇒ the default arrangement.
@@ -2256,10 +2312,248 @@ export function MapCanvas({
       runOptimistic({ kind: 'chain.deleted', eventId: 0, id: chainId, name: chain?.name ?? '' }, () =>
         deleteChainOnServer({ mapId, chainId }),
       );
-      if (activeChainIdRef.current === chainId) updateChainView({ activeChainId: null });
+      // Deleting the open chain falls back to the All forest — the viewer was
+      // in chain-land; dropping to the free canvas would be a mode switch.
+      if (activeChainIdRef.current === chainId) updateChainView({ activeChainId: ALL_CHAINS_TAB });
     },
     [mapId, runOptimistic, viewData.chains, updateChainView],
   );
+
+  // ---- All-view forest derivations + handlers (Stage 5) ------------------
+  //
+  // Geometry comes from the full tree footprints (never re-packed by zoom or
+  // expansion), so pan/zoom stays smooth; the LOD blobs swap in per chain via
+  // `shouldCollapseChain` inside `buildForestCanvas`.
+  const forestModel = useMemo(() => {
+    if (!isForestTab) return null;
+    return buildForestCanvas({
+      chains: visibleChains,
+      members: viewData.chainMembers,
+      systems: viewData.systems,
+      liveConnectionIds: new Set(viewData.connections.map((c) => c.id)),
+      criticalConnectionIds: new Set(
+        viewData.connections.filter((c) => c.eolStage === 'critical').map((c) => c.id),
+      ),
+      zoom: forestZoom,
+      threshold: chainBlobThreshold,
+      expandedChainIds,
+      params: CHAIN_TILE_PARAMS,
+      orientation: chainView.orientation,
+      viewportWidth: forestViewportWidth,
+      blockGap: CHAIN_FOREST_BLOCK_GAP,
+    });
+  }, [
+    isForestTab,
+    visibleChains,
+    viewData.chainMembers,
+    viewData.systems,
+    viewData.connections,
+    forestZoom,
+    chainBlobThreshold,
+    expandedChainIds,
+    chainView.orientation,
+    forestViewportWidth,
+  ]);
+
+  const forestNodes = useMemo<ChainForestCanvasNode[]>(() => {
+    if (!forestModel) return [];
+    const systemData = (system: MapSystemNode, mapSystemId: string): SystemNodeData => ({
+      ...system,
+      onAliasOrTagCommit,
+      isHome: mapSystemId === viewData.map.homeMapSystemId,
+      inFactionWarfare: intel[system.systemId]?.factionWar != null,
+      hasIncursion: intel[system.systemId]?.incursion != null,
+      hasNotes: (systemNotes[system.systemId] ?? []).length > 0,
+    });
+    return [
+      ...forestModel.labels.map((l) => ({
+        id: `chainlbl:${l.chainId ?? 'unassigned'}`,
+        type: 'chainLabel' as const,
+        position: { x: l.x, y: l.y - CHAIN_FOREST_LABEL_OFFSET },
+        data: {
+          chainId: l.chainId,
+          label: l.label,
+          kind: l.kind,
+          collapsible: l.collapsible,
+          maxWidth: l.maxWidth,
+          onToggleExpand: onToggleChainExpand,
+        } satisfies ChainLabelNodeData,
+        selectable: false,
+        draggable: false,
+      })),
+      ...forestModel.blobs.map((b) => ({
+        id: `chainblob:${b.chainId}`,
+        type: 'chainBlob' as const,
+        position: { x: b.x, y: b.y },
+        data: {
+          content: b.content,
+          width: b.width,
+          height: b.height,
+          expandable: b.expandable,
+          kind: b.kind,
+          onToggleExpand: onToggleChainExpand,
+        } satisfies ChainBlobNodeData,
+        selected: selected?.kind === 'chain' && selected.id === b.chainId,
+        draggable: false,
+      })),
+      ...forestModel.occurrences.map((o) => ({
+        id: o.id,
+        type: 'system' as const,
+        position: { x: o.x, y: o.y },
+        data: systemData(o.system, o.mapSystemId),
+        selected: selectedSystemIds.has(o.mapSystemId),
+        draggable: false,
+      })),
+      ...forestModel.pointers.map((p) => ({
+        id: p.id,
+        type: 'chainPointer' as const,
+        position: { x: p.x, y: p.y },
+        data: {
+          memberId: p.memberId,
+          targetChainId: p.targetChainId,
+          targetChainName: p.targetChainName,
+          isLoop: p.isLoop,
+          targetMapSystemId: p.targetMapSystemId,
+          targetSystemName: p.targetSystemName,
+        },
+        selectable: false,
+        draggable: false,
+      })),
+      ...forestModel.unassigned.map((tile) => ({
+        id: tile.mapSystemId,
+        type: 'system' as const,
+        position: { x: tile.x, y: tile.y },
+        data: systemData(tile.system, tile.mapSystemId),
+        selected: selectedSystemIds.has(tile.mapSystemId),
+        draggable: false,
+      })),
+    ];
+  }, [
+    forestModel,
+    intel,
+    systemNotes,
+    selected,
+    selectedSystemIds,
+    viewData.map.homeMapSystemId,
+    onAliasOrTagCommit,
+    onToggleChainExpand,
+  ]);
+
+  // Forest edge ids are member-keyed (one connection can back links in several
+  // chains at once, and xyflow ids must be unique) — canonical selection and
+  // the endpoint context menu resolve through the connection carried in `data`.
+  const forestEdges = useMemo<Edge[]>(() => {
+    if (!forestModel) return [];
+    const connById = new Map(viewData.connections.map((c) => [c.id, c]));
+    const whByConn = buildWormholeByConnection(viewData.signatures);
+    return forestModel.edges.map((e): Edge => {
+      const conn = e.connectionId != null ? connById.get(e.connectionId) : undefined;
+      if (!conn) {
+        return {
+          id: e.id,
+          source: e.sourceNodeId,
+          target: e.targetNodeId,
+          selectable: false,
+          style: {
+            stroke: 'var(--muted-foreground)',
+            strokeDasharray: '4 4',
+            strokeWidth: 1.5,
+            opacity: 0.5,
+          },
+        };
+      }
+      const wh = whByConn.get(conn.id) ?? null;
+      return {
+        id: e.id,
+        type: 'connection',
+        source: e.sourceNodeId,
+        target: e.targetNodeId,
+        data: {
+          ...conn,
+          mapId: viewData.map.id,
+          wormholeTypeId: wh?.typeId ?? null,
+          wormholeCode: wh?.code ?? null,
+          // ConnectionEdge passes its own (member-keyed) edge id here; the
+          // menu needs the canonical connection id.
+          onEndpointContextMenu: (_edgeId: string, end: ConnectionEnd, x: number, y: number) =>
+            onEndpointContextMenu(conn.id, end, x, y),
+        },
+        selected: selected?.kind === 'connection' && selected.id === conn.id,
+      };
+    });
+  }, [
+    forestModel,
+    viewData.connections,
+    viewData.signatures,
+    viewData.map.id,
+    selected,
+    onEndpointContextMenu,
+  ]);
+
+  const onForestNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.type === 'chainPointer') {
+        openPointerTarget(node.data as ChainPointerNodeData);
+        return;
+      }
+      if (node.type === 'chainBlob') {
+        const chainId = (node.data as ChainBlobNodeData).content.chainId;
+        setSelected({ kind: 'chain', id: chainId });
+        setSelectedSystemIds(new Set());
+        return;
+      }
+      if (node.type === 'chainLabel') {
+        const chainId = (node.data as ChainLabelNodeData).chainId;
+        if (chainId) {
+          setSelected({ kind: 'chain', id: chainId });
+          setSelectedSystemIds(new Set());
+        }
+        return;
+      }
+      const mapSystemId = (node.data as SystemNodeData).id;
+      setSelected({ kind: 'system', id: mapSystemId });
+      setSelectedSystemIds(new Set([mapSystemId]));
+    },
+    [openPointerTarget],
+  );
+
+  const onForestNodeDoubleClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      const chainId =
+        node.type === 'chainBlob'
+          ? (node.data as ChainBlobNodeData).content.chainId
+          : node.type === 'chainLabel'
+            ? (node.data as ChainLabelNodeData).chainId
+            : null;
+      if (chainId) onChainSelect(chainId);
+    },
+    [onChainSelect],
+  );
+
+  const onForestEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    const connectionId = (edge.data as { id?: string } | undefined)?.id;
+    if (!connectionId) return; // dashed fallback edges carry no connection
+    setSelected({ kind: 'connection', id: connectionId });
+    setSelectedSystemIds(new Set());
+  }, []);
+
+  const onForestNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    if (node.type !== 'system') return;
+    setContextMenu({
+      kind: 'system',
+      id: (node.data as SystemNodeData).id,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+
+  const onForestEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    const connectionId = (edge.data as { id?: string } | undefined)?.id;
+    if (!connectionId) return;
+    setContextMenu({ kind: 'connection', id: connectionId, x: event.clientX, y: event.clientY });
+  }, []);
 
   const selectedSystem: MapSystemNode | null = useMemo(() => {
     if (selected?.kind !== 'system') return null;
@@ -2521,7 +2815,7 @@ export function MapCanvas({
           <div className="flex h-full flex-col overflow-hidden rounded-lg ring-1 ring-foreground/10">
             <ChainTabStrip
               chains={visibleChains}
-              activeChainId={activeChain?.id ?? null}
+              activeChainId={activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null)}
               canManage={canManage}
               orientation={chainView.orientation}
               onSelect={onChainSelect}
@@ -2530,7 +2824,7 @@ export function MapCanvas({
               onRename={onChainRename}
               onDelete={onChainDelete}
             />
-            {activeChain === null ? (
+            {activeChain === null && !isForestTab ? (
             <div ref={flowWrapperRef} className="relative min-h-0 flex-1">
             {selectedSystemIds.size > 1 &&
               deletableSelectedSystemIds.length > 0 &&
@@ -2636,6 +2930,23 @@ export function MapCanvas({
               <Controls showInteractive={false} />
             </ReactFlow>
             </div>
+            ) : activeChain === null ? (
+              // Only the forest tab reaches here with no active chain.
+              <div ref={forestWrapperRef} className="relative min-h-0 flex-1">
+                <ChainForestCanvas
+                  nodes={forestNodes}
+                  edges={forestEdges}
+                  focus={chainFocus}
+                  onNodeClick={onForestNodeClick}
+                  onNodeDoubleClick={onForestNodeDoubleClick}
+                  onEdgeClick={onForestEdgeClick}
+                  onPaneClick={onPaneClick}
+                  onNodeContextMenu={onForestNodeContextMenu}
+                  onEdgeContextMenu={onForestEdgeContextMenu}
+                  onPaneContextMenu={onChainPaneContextMenu}
+                  onZoom={onForestZoom}
+                />
+              </div>
             ) : (
               <div className="relative min-h-0 flex-1">
                 <ChainCanvas

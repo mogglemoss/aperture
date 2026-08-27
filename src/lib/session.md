@@ -26,6 +26,9 @@ The account's `ap_user.connection_travel_animation` toggle (defaults to `true` w
 ### getMapLayout(userId: number): Promise<MapLayoutConfig | null>
 The account's `ap_user.map_layout` — the free-form map dashboard arrangement (map-layout-builder), or `null` when unset (the client then falls back to `DEFAULT_MAP_LAYOUT`). One global layout per account, applied to every map. Loaded in `map/[[...slug]]/page.tsx` and passed to `MapCanvas`; written by `setMapLayoutAction` (`actions/account.ts`).
 
+### getChainBlobThreshold(userId: number): Promise<number>
+The account's `ap_user.chain_blob_threshold` (defaulting to 15 when the row is somehow missing) — the chain-size collapse preference: a chain with more systems than this renders as its blob in the map's All view even at full zoom. Loaded in `map/[[...slug]]/page.tsx`, passed to `MapCanvas`.
+
 ### getGlobalStaleThresholdMinutes(): Promise<number>
 The instance-wide default stale-signature threshold (`ap_instance.stale_signature_threshold_minutes`), defaulting to 240 (4h) when the singleton row is somehow missing. The cap for per-account overrides.
 

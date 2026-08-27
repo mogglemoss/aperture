@@ -542,6 +542,10 @@ export type {
   ChainPointerLeaf,
   ChainCanvasEdge,
   ChainCanvasModel,
+  ChainForestBlob,
+  ChainForestBlockLabel,
+  ChainForestUnassignedTile,
+  ChainForestCanvasModel,
 } from '@/lib/map/chains/view';
 
 // Signature mutation input types (src/lib/map/mutations/signatures.ts).

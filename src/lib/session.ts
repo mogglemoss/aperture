@@ -107,6 +107,21 @@ export async function getMapLayout(userId: number): Promise<MapLayoutConfig | nu
   return row?.mapLayout ?? null;
 }
 
+const DEFAULT_CHAIN_BLOB_THRESHOLD = 15;
+
+/**
+ * The account's chain blob-collapse size preference
+ * (`ap_user.chain_blob_threshold`): a chain with more systems than this
+ * renders as its blob in the All view even at full zoom.
+ */
+export async function getChainBlobThreshold(userId: number): Promise<number> {
+  const [row] = await db
+    .select({ threshold: apUser.chainBlobThreshold })
+    .from(apUser)
+    .where(eq(apUser.id, userId));
+  return row?.threshold ?? DEFAULT_CHAIN_BLOB_THRESHOLD;
+}
+
 const DEFAULT_STALE_THRESHOLD_MINUTES = 240;
 
 /** The instance-wide default stale-signature threshold (minutes). */

@@ -25,11 +25,19 @@ import {
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { apertureConfig } from '../../../aperture.config';
 
-// Chain tab strip (nomadic-chains): "All" + one tab per visible chain, wrapping
-// onto multiple rows at corp scale. The tabs ARE the chain-mode toggle — "All"
-// shows the free canvas (the forest render is Stage 5), a chain tab swaps in
-// the ChainCanvas tree. Personal-chain lifecycle is open to anyone; shared
-// chains are offered only to managers (the server re-checks every call).
+// Chain tab strip (nomadic-chains): "Free" + "All" + one tab per visible
+// chain, wrapping onto multiple rows at corp scale. The tabs ARE the
+// chain-mode toggle — "Free" (the default) shows the untouched free canvas,
+// "All" the forest render of every visible chain, a chain tab swaps in the
+// ChainCanvas tree. Personal-chain lifecycle is open to anyone; shared chains
+// are offered only to managers (the server re-checks every call).
+
+/**
+ * Sentinel tab id for the All-view forest. Safe against chain ids (bigserial
+ * numeric strings); `null` stays the free canvas so a stored pre-forest
+ * preference keeps its meaning.
+ */
+export const ALL_CHAINS_TAB = 'all';
 
 export function ChainTabStrip({
   chains,
@@ -44,7 +52,7 @@ export function ChainTabStrip({
 }: {
   /** Visible chains in tab order (shared first, then personal, by creation — `sortChainsForTabs`). */
   chains: MapChain[];
-  /** Active chain tab; null = the "All" tab. */
+  /** Active tab: a chain id, `ALL_CHAINS_TAB` for the forest, null for the free canvas. */
   activeChainId: string | null;
   /** Whether the viewer manages the map — offers the shared kind and shared-chain rename/delete. */
   canManage: boolean;
@@ -89,7 +97,20 @@ export function ChainTabStrip({
 
   return (
     <div className="flex flex-wrap items-center gap-1 border-b border-foreground/10 bg-card/50 px-1.5 py-1">
-      <button type="button" className={tabClass(activeChainId === null)} onClick={() => onSelect(null)}>
+      <button
+        type="button"
+        className={tabClass(activeChainId === null)}
+        onClick={() => onSelect(null)}
+        title="Free canvas — manual layout"
+      >
+        Free
+      </button>
+      <button
+        type="button"
+        className={tabClass(activeChainId === ALL_CHAINS_TAB)}
+        onClick={() => onSelect(ALL_CHAINS_TAB)}
+        title="Every chain side by side"
+      >
         All
       </button>
       {chains.map((chain) => {

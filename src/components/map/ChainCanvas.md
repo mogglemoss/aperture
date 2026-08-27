@@ -15,7 +15,7 @@
 | onNodeContextMenu / onEdgeContextMenu / onPaneContextMenu | handlers | yes | Right-click handlers (suppress the native menu; occurrence/edge open the canonical context menu). |
 
 ### Exports
-- `CHAIN_TILE_PARAMS: ChainLayoutParams` — tile/gap dimensions fed to the layout engine, in logical (breadth × depth) terms (never pre-swapped per orientation; the layout transposes). Consumed by `MapCanvas`'s `buildChainCanvas` memo.
+- `CHAIN_TILE_PARAMS: ChainLayoutParams` — tile/gap dimensions fed to the layout engine, in logical (breadth × depth) terms (never pre-swapped per orientation; the layout transposes). Consumed by `MapCanvas`'s `buildChainCanvas` / `buildForestCanvas` memos and `ChainForestCanvas`'s focus centering.
 - `ChainCanvasNode` — `Node<SystemNodeData> | Node<ChainPointerNodeData>`.
 - `ChainFocusRequest` — `{ token, mapSystemId }`.
 

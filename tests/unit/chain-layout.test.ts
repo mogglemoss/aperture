@@ -255,6 +255,23 @@ describe('layoutForest', () => {
     expect(block.systems[3]).toMatchObject({ mapSystemId: '4', x: 0, y: 80 });
   });
 
+  it('blockGap spaces the shelf packing without touching intra-tree gaps', () => {
+    const members = [m('1', null, { chainId: '1' }), m('2', null, { chainId: '2' })];
+    const forest = layoutForest({
+      chains: [
+        { id: '1', kind: 'shared' },
+        { id: '2', kind: 'shared' },
+      ],
+      members,
+      unassignedSystemIds: [],
+      params: P,
+      orientation: 'root-top',
+      viewportWidth: 10_000,
+      blockGap: { x: 90, y: 80 },
+    });
+    expect(forest.blocks[1]).toMatchObject({ x: P.nodeW + 90, y: 0 });
+  });
+
   it('a chain with no members contributes an empty 0×0 block', () => {
     const forest = layoutForest({
       chains: [{ id: '1', kind: 'shared' }],
