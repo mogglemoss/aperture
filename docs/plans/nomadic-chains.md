@@ -73,7 +73,7 @@
 
 ## Stage 5 — All-view forest + LOD blobs
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 423843f
 **Goal:** The All tab renders every visible chain side by side (natural width, horizontal scroll) with per-chain blob collapse past the zoom threshold, holding 60fps pan at WDS scale.
 **References:** `src/lib/map/chains/layout.md` + `collapse.md` (incl. the blob content contract — the All view calls `layoutForest({ chains, members, unassignedSystemIds, params, orientation, viewportWidth })` and per chain `shouldCollapseChain`; `formatChainBlobLine` renders the blob's summary line; block node coords are block-local, offset by the block's `x`/`y`), Stage 4's render path: `src/lib/map/chains/view.md` (`buildChainCanvas` — extend or sibling it for the forest), `src/components/map/ChainCanvas.md` (`CHAIN_TILE_PARAMS`, the xyflow config to mirror), `ChainTabStrip.md`, `ChainPointerNode.md`.
 **Touches:** the chain-mode render path, `MapCanvas.tsx`.
