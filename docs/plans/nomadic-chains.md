@@ -24,8 +24,8 @@
 **Status:** todo
 **Goal:** `ap_map_chain` + `ap_map_chain_member` exist with the settled shape, migrated and typed.
 **References:** `src/db/schema/ap/map_system.md`, `map_connection.md`, `structure.md` (audit-FK conventions), CLAUDE.md "Database".
-**Touches:** `src/db/schema/ap/enums.ts` (+`chain_kind` pgEnum `personal|shared`), new `src/db/schema/ap/map_chain.ts` + `map_chain_member.ts` (+ companions), `src/db/schema/index.ts`, `src/types/index.ts`, one migration + rollback.
-**Spec:** `ap_map_chain`: id bigserial PK, map_id → ap_map CASCADE, name (≤40, app-layer), kind `chain_kind`, owner_character_id → ap_character CASCADE for `personal` (CHECK: personal ⇔ owner non-null, shared ⇔ owner null... shared keeps a `created_by_character_id` SET NULL audit column instead), created/updated timestamptz. `ap_map_chain_member`: id bigserial PK, chain_id → ap_map_chain CASCADE, map_system_id → ap_map_system CASCADE, parent_member_id → self CASCADE nullable (null ⇔ root), via_connection_id → ap_map_connection SET NULL nullable, pointer_chain_id → ap_map_chain SET NULL nullable (non-null ⇔ pointer-leaf), UNIQUE(chain_id, map_system_id), index on chain_id.
+**Touches:** `src/db/schema/ap/enums.ts` (+`chain_kind` pgEnum `personal|shared`), new `src/db/schema/ap/map_chain.ts` + `map_chain_member.ts` (+ companions), `src/db/schema/ap/user.ts` (`chain_blob_threshold`), `src/db/schema/index.ts`, `src/types/index.ts`, one migration + rollback.
+**Spec:** `ap_user` gains `chain_blob_threshold` (`integer NOT NULL DEFAULT 15`) — the per-account chain-size collapse preference Stage 3's decision function consumes. `ap_map_chain`: id bigserial PK, map_id → ap_map CASCADE, name (≤40, app-layer), kind `chain_kind`, owner_character_id → ap_character CASCADE for `personal` (CHECK: personal ⇔ owner non-null, shared ⇔ owner null... shared keeps a `created_by_character_id` SET NULL audit column instead), created/updated timestamptz. `ap_map_chain_member`: id bigserial PK, chain_id → ap_map_chain CASCADE, map_system_id → ap_map_system CASCADE, parent_member_id → self CASCADE nullable (null ⇔ root), via_connection_id → ap_map_connection SET NULL nullable, pointer_chain_id → ap_map_chain SET NULL nullable (non-null ⇔ pointer-leaf), UNIQUE(chain_id, map_system_id), index on chain_id.
 **Done when:** migration applies + rolls back on the dev DB; `pnpm typecheck && pnpm lint && pnpm test` green.
 
 ## Stage 2 — Chain lifecycle + membership write-through
@@ -38,16 +38,27 @@
 **Done when:** two-browser test: personal chain invisible to the second user; shared chain live-appears; charting from a tab grows the right tree; cross-link produces a pointer-leaf row; checks green.
 
 ## Stage 3 — Forest layout engine + LOD spec
-**Design pass:** the tree/forest layout algorithm (tidy-tree with variable node width; fan-out band packing; stability under growth) and the collapsed-chain blob representation (what it shows, hit behavior, and the two composing collapse triggers: zoom-based LOD, plus a size threshold as a per-user preference — Tripwire blobs chains over 15 jumps by default, adopt that default). Settled inputs from Tripwire's "org chart" view: **orientation is a per-user preference** — root-on-top (children fan horizontally, depth vertical) or root-on-left (transposed) — one algorithm, two orientations; the **All view packs chains into wrapped rows** (grid/masonry by chain extent), not a single horizontal strip; k-space roots render visually distinct from J-space nodes (Tripwire uses oval badges vs rectangles — pick our own treatment, same legibility goal). Needs its own session against Stage 1–2's real data shapes.
+**Mode:** Execute
 **Status:** todo
 **Goal:** A pure, tested layout module: memberships in → positioned occurrence nodes + edges out, for one tree or the whole forest, plus the blob-collapse decision function.
-_(`Mode`, `References`, `Touches`, `Done when` filled in by the design session, which may split this stage.)_
+**References:** this stage's spec below (the design is settled — do not re-derive it); Stage 1's `ap_map_chain_member` shape; `src/components/map/MapCanvas.md` only for the consuming render path's expectations (Stage 4).
+**Touches:** new `src/lib/map/chains/layout.ts`, `src/lib/map/chains/collapse.ts` (+ companions), `tests/unit/chain-layout.test.ts` (+ companion). Pure modules — no components, no schema, no API.
+
+**Spec (designed 2026-08-27):**
+- **Tree layout** — hand-rolled recursive tidy-tree, no new dependency: a subtree's breadth is `max(nodeW, Σ children breadths + gaps)`, parent centered over its children's span, depth axis = `depth × (nodeH + gapY)`. O(n) over members. Children order deterministically by member id (creation order) so growth never shuffles siblings. Pointer-leaves lay out as fixed-size leaf pills. Node/gap dimensions are parameters (`{ nodeW, nodeH, gapX, gapY }`) — the module never imports UI constants.
+- **Orientation** — computed in logical (breadth × depth) coordinates, transposed at the end: `root-top` (depth grows downward) or `root-left` (depth grows rightward). A per-user display preference (client-persisted with the map-layout prefs; no schema).
+- **Forest packing** (All view) — each chain is a bounding block; shelf-packed into rows wrapping at a supplied viewport width (row height = tallest block in the row). Order: shared chains, then personal, each by creation order; the "Unassigned" pseudo-chain (chainless systems as a plain grid block) last. Order never keys on size, so growth doesn't teleport chains. Re-flow on resize is accepted.
+- **Collapse decision** (`collapse.ts`) — pure function of `{ systemCount, zoom, threshold, expandedOverride }` with defined precedence: below the zoom cutoff (constant, ~0.35) every chain is a blob; above it, a chain blobs when `systemCount > threshold` unless the session-local expansion override is set. `threshold` is the viewer's `ap_user.chain_blob_threshold` (default 15 — Tripwire's default).
+- **Blob content contract** (consumed by Stage 5's renderer): chain name, system count, k-space exit summary grouped by security class (e.g. "34 systems · 5 HS · 2 LS"), and presence of rally / EOL-critical flags. Hit behavior: click selects (chain summary in the sidebar), the expand affordance toggles the session override, double-click opens the chain's tab.
+- **K-space roots and exits render visually distinct** from J-space occurrence tiles (the Tripwire oval-vs-rectangle legibility goal; Stage 4 picks the treatment).
+- **Chain mode is not draggable** — the generated layout owns positions; manual drag belongs to the free-canvas mode only.
+**Done when:** unit tests cover subtree-breadth math, sibling stability under an added child, both orientations agreeing under transpose, shelf-wrap at a given width, pointer-leaf sizing, and every collapse-precedence branch; `pnpm typecheck && pnpm lint && pnpm test` green. No UI is rendered by this stage.
 
 ## Stage 4 — Tab strip + single-chain view
 **Mode:** Execute
 **Status:** todo
 **Goal:** The map page gains a wrapping tab strip (All + this viewer's chains + shared chains) and a chain-mode canvas that renders one chain as a generated tree with occurrence nodes; the free-canvas mode is untouched and remains the default.
-**References:** Stage 3's layout module, `src/components/map/MapCanvas.md`, `src/components/map/SystemNode.md`.
+**References:** `src/lib/map/chains/layout.md` + `collapse.md` (Stage 3's modules), `src/components/map/MapCanvas.md`, `src/components/map/SystemNode.md`.
 **Touches:** `src/components/map/MapCanvas.tsx`, new `ChainTabStrip.tsx` + chain-mode render path (+ companions).
 **Done when:** switching tabs re-renders in <100ms on a 40-system chain; occurrence nodes carry full SystemNode affordances (status, sigs, notes indicator); pointer-leaves render and navigate; charting inside the tab grows it live; checks green.
 
@@ -55,7 +66,7 @@ _(`Mode`, `References`, `Touches`, `Done when` filled in by the design session, 
 **Mode:** Execute
 **Status:** todo
 **Goal:** The All tab renders every visible chain side by side (natural width, horizontal scroll) with per-chain blob collapse past the zoom threshold, holding 60fps pan at WDS scale.
-**References:** Stage 3's layout + blob spec, Stage 4's render path.
+**References:** `src/lib/map/chains/layout.md` + `collapse.md` (incl. the blob content contract), Stage 4's render path.
 **Touches:** the chain-mode render path, `MapCanvas.tsx`.
 **Done when:** a synthetic 1000-system / 30-chain fixture pans smoothly with blobs at low zoom and full tiles at high zoom; an "Unassigned" column carries chainless systems; checks green.
 
