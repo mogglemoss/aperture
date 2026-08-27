@@ -79,14 +79,37 @@
 **Done when:** the Stage 5 fixture loads in <3s on nautilus and no payload exceeds the pg_notify ceiling; findings recorded in Notes.
 
 ## Stage 7 — Chains-near-me
-**Design pass:** distance semantics (which tracked character; jumps via gate graph from location to each chain's *nearest* k-space exit of many; staleness), where it surfaces (tab badges? a panel?), and compute placement (server on load vs. on demand). Builds on `src/lib/map/routePlanner.md`, `gateGraph.md`.
+**Mode:** Execute
 **Status:** todo
-**Goal:** Every chain answers "how far is this from me" — the orientation feature Tripwire lacks.
+**Goal:** Every chain answers "how far is this from me" — the orientation feature Tripwire lacks (Chase Boirelle: "difficult to interpret… where any of them are in relation to you").
+**References:** `src/lib/map/gateGraph.md` (`bfs`, adjacency), `src/lib/map/routePlanner.md` (`getGateGraph` — memoized adjacency; do not reload the edge table), `src/components/map/MapPresenceContext.md` (live pilot locations), Stage 4's tab strip and Stage 5's blob renderer (consumers).
+**Touches:** new `src/lib/map/chains/distance.ts` (+ `.md`), new API route `src/app/api/map/[mapId]/chain-distances/route.ts` (+ `.md`), tab-strip + blob + chain-summary rendering touches, a unit test for the distance reducer.
 
-## Stage 8 — Mobile pass
-**Design pass:** the phone layout for chain mode (single-chain view + tab drawer as the primary mobile surface; what the sm breakpoint dashboard drops). Explicit goal: better than Tripwire mobile, which is the bar on the floor.
+**Spec (designed 2026-08-27):**
+- **Semantics.** Distance is **gate jumps, shortest, unweighted** — orientation, not navigation (the route module owns safety-weighted actual routing). For each chain: `min` over its k-space member systems ("exits") of BFS distance from the viewer's origin set. Chains with no k-space member show "—" (unreachable by gates), never 0.
+- **Origin set.** The viewer's tracked pilot location (route-source picker precedent: the selected/first active character with a known location). In k-space: the origin is that system. In J-space: the origin set is the k-space exits of whichever chain contains the pilot's current system (min over pairs); if no chain contains it, distances are unknown and the badges hide. This "from inside my chain" case is the everyday WDS case and must work.
+- **Compute.** Server-side: one multi-source BFS over `getGateGraph().adjacency` (seed the queue with every origin at distance 0), then min per chain over its exits — O(V+E) once per request, ~8.5k systems, no per-chain BFS. `GET /api/map/[mapId]/chain-distances` (view-gated) returns `{ characterId, originSystemId | null, distances: Record<chainId, number | null> }` for every chain the viewer can see (personal = own only, shared = all).
+- **Freshness.** Client refetches on panel/tab-strip mount and debounced on the viewer's own presence `characterUpdate` (location change); no realtime channel of its own, no server cache beyond the memoized gate graph.
+- **Surfaces.** A small `Nj` badge on each chain tab (tooltip: "N jumps to <exit system> via gates"), the same figure in the Stage 5 blob line and the chain-summary sidebar. No sorting by distance (tab order stays stable — the Stage 3 invariant).
+**Done when:** unit test covers the reducer (min-over-exits, J-space origin-set case, no-exit chain → null); with two chains seeded, the endpoint returns hand-checkable jump counts (Jita → Perimeter = 1 fixture idiom from `universe-ingest`); badges render and hide correctly with no located pilot; checks green.
+
+## Stage 8a — Mobile chain view (follow)
+**Mode:** Execute
 **Status:** todo
-**Goal:** A phone can follow and chart a chain without fighting the desktop dashboard.
+**Goal:** On a phone-width viewport in chain mode, the map page swaps the dashboard for a full-screen single-chain tree with a chain-switcher drawer — a pilot can follow any chain on a phone.
+**References:** Stage 3's layout module (touch-sized layout params are just different `{nodeW, nodeH, gap}` inputs), Stage 4's chain render path, `src/lib/map/layout/panels.md` (the `sm` breakpoint story it replaces in chain mode only).
+**Touches:** new `src/components/map/mobile/MobileChainView.tsx` + `ChainDrawer.tsx` (+ companions), a breakpoint gate in the map page/`MapCanvas` (chain mode + `sm` ⇒ mobile view; free-canvas mode keeps today's stacked dashboard untouched).
+**Spec (designed 2026-08-27):** root-top orientation forced (phones are portrait; the orientation pref is a desktop concern); larger touch-target layout params; pinch/pan via xyflow's touch support; the drawer is a bottom sheet listing chain cards (name, blob summary line, the Stage 7 `Nj` badge) — tap opens that chain, "All" is a card list rather than a rendered forest (no 1000-node canvas on a phone). Tab-strip, hotkeys, and command palette do not mount at `sm`.
+**Done when:** at 375px width: chain mode shows the mobile view; the drawer switches between three seeded chains; the tree pans/zooms with touch; free-canvas mode at `sm` is unchanged; checks green.
+
+## Stage 8b — Mobile actions (light charting)
+**Mode:** Execute
+**Status:** todo
+**Goal:** Selecting a node in the mobile chain view opens a bottom action sheet with the light-edit set — status, rally, lock, EOL/mass on the inbound connection, read/add system notes — so a phone can keep intel current mid-roam.
+**References:** Stage 8a's view, `src/lib/map/keyboardActions.md` (the action registry is the same action set; reuse it — the sheet is a third invocation surface beside buttons/palette/keys), `src/components/sidebar/SystemNotesModule.md`.
+**Touches:** new `src/components/map/mobile/NodeActionSheet.tsx` (+ companion), `MobileChainView.tsx` wiring.
+**Spec (designed 2026-08-27):** the sheet renders from `buildPaletteActions` filtered to its groups (System + Connection of the inbound edge) plus a notes section (list + add dialog reused from `SystemNotesModule`'s pieces). Full charting (signature paste, connection drawing, add-system) stays desktop — deliberately out of mobile scope.
+**Done when:** on a phone-width viewport: set status, toggle rally, mark a connection EOL, and add a note end-to-end; every mutation is the same server call as desktop (spot-check the audit log); checks green.
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
