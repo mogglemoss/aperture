@@ -65,7 +65,7 @@
 
 ## Stage 4 — Tab strip + single-chain view
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 64f3aa2
 **Goal:** The map page gains a wrapping tab strip (All + this viewer's chains + shared chains) and a chain-mode canvas that renders one chain as a generated tree with occurrence nodes; the free-canvas mode is untouched and remains the default.
 **References:** `src/lib/map/chains/layout.md` + `collapse.md` (Stage 3's modules — the tab view calls `layoutChainTree(chainId, members, params, orientation)`; `MapChainMember` rows pass straight in as `ChainLayoutMemberRef`s, node coords are block-local top-left, and the types are re-exported from `@/types`), `src/components/map/MapCanvas.md`, `src/components/map/SystemNode.md`, `src/lib/map/client.md` (the chain lifecycle helpers + the `chainId`/`parentMemberId`/`sourceMemberId` body fields the charting calls already accept), `src/lib/map/applyEvent.md` (chain state already folds; `MapViewData.chains`/`chainMembers` carry the load).
 **Touches:** `src/components/map/MapCanvas.tsx`, new `ChainTabStrip.tsx` + chain-mode render path (+ companions).
