@@ -39,6 +39,7 @@
     "adm-zip": "^0.5.17",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "csv-parse": "^6.2.1",
     "drizzle-orm": "^0.45.2",
     "graphile-worker": "^0.16.6",

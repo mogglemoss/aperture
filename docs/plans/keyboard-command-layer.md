@@ -5,7 +5,7 @@
 
 ## Stage 1 — Command palette
 **Mode:** Execute
-**Status:** todo
+**Status:** done — f259162
 **Goal:** A ⌘K/Ctrl-K palette on the map page listing context-aware actions — selection-dependent entries (set status, toggle EOL stage, mass stage, lock, rally, remove) plus global ones (add system, jump to system by name/alias — reusing the sig-search jump, open notes browser, open settings) — each dispatching the exact callback the equivalent button already uses.
 **References:** `src/components/map/MapCanvas.md`, `src/components/sidebar/InspectorModule.md` (the per-system action vocabulary and their commit callbacks), shadcn/ui Command component (add via the project's component pipeline).
 **Touches:** new `src/components/map/CommandPalette.tsx` (+ `.md`), `src/components/map/MapCanvas.tsx` (mount + wire callbacks), `package.json` only if the Command primitive needs `cmdk`.

@@ -140,6 +140,8 @@ import { MapPresenceProvider } from './MapPresenceContext';
 import { MapActiveCharProvider, useMapActiveChar } from './MapActiveCharContext';
 import { MapSignatureIndicatorProvider } from './MapSignatureIndicatorContext';
 import { SignaturePasteHotkey } from './SignaturePasteHotkey';
+import { CommandPalette } from './CommandPalette';
+import type { KeyboardActionContext } from '@/lib/map/keyboardActions';
 import { TransitSignaturePrompt } from './TransitSignaturePrompt';
 import { MapTravelProvider, TravelBridge } from './MapTravelContext';
 import { MapUnderglowProvider } from './MapUnderglowContext';
@@ -1973,6 +1975,43 @@ export function MapCanvas({
     [viewData.systems],
   );
 
+  // Command-palette action context: the current selection plus the exact
+  // callbacks the equivalent buttons use (see `keyboardActions.ts`).
+  const selectedConnection = useMemo(
+    () =>
+      selected?.kind === 'connection'
+        ? (viewData.connections.find((c) => c.id === selected.id) ?? null)
+        : null,
+    [selected, viewData.connections],
+  );
+  const openAddSystem = useCallback(() => setAddSystemOpen(true), []);
+  const paletteContext = useMemo<KeyboardActionContext>(
+    () => ({
+      selectedSystem,
+      selectedConnection,
+      homeMapSystemId: viewData.map.homeMapSystemId,
+      systems: viewData.systems,
+      onSystemPatch,
+      onSystemRemove,
+      onConnectionPatch,
+      onConnectionDelete,
+      openAddSystem,
+      jumpToSystem: onJumpToSystem,
+    }),
+    [
+      selectedSystem,
+      selectedConnection,
+      viewData.map.homeMapSystemId,
+      viewData.systems,
+      onSystemPatch,
+      onSystemRemove,
+      onConnectionPatch,
+      onConnectionDelete,
+      openAddSystem,
+      onJumpToSystem,
+    ],
+  );
+
   const onSystemNoteDelete = useCallback(
     async (noteId: string) => {
       if (!selectedSystem) return;
@@ -2259,6 +2298,7 @@ export function MapCanvas({
           <TravelBridge systems={viewData.systems} connections={viewData.connections} />
         )}
         <MapUnderglowBridge systems={viewData.systems} />
+        <CommandPalette context={paletteContext} />
         <SignaturePasteHotkey
           mapId={mapId}
           selectedSystem={selectedSystem}
