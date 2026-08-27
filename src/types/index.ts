@@ -400,6 +400,8 @@ export type {
   MapConnectionEdge,
   MapSignature,
   MapNote,
+  MapChain,
+  MapChainMember,
   MapPresenceEntry,
   MapViewData,
   MapListItem,
@@ -501,6 +503,15 @@ export type {
   UpdateConnectionInput,
   UpdateConnectionPatch,
 } from '@/lib/map/mutations/connections';
+
+// Chain mutation input types (src/lib/map/mutations/chains.ts).
+export type {
+  CreateChainInput,
+  RenameChainInput,
+  DeleteChainInput,
+  SystemAddChainContext,
+  ConnectionChainContext,
+} from '@/lib/map/mutations/chains';
 
 // Signature mutation input types (src/lib/map/mutations/signatures.ts).
 export type {

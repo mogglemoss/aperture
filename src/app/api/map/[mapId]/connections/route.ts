@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
 import { createConnection } from '@/lib/map/mutations/connections';
+import { createConnectionWithChainMembership } from '@/lib/map/mutations/chains';
 import { updateSystem } from '@/lib/map/mutations/systems';
 import { assignTagOnConnect } from '@/lib/tagging/service';
 import { logger } from '@/lib/log/logger';
@@ -13,22 +14,34 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
 /**
  * POST /api/map/[mapId]/connections
  * Create a connection between two map systems.
- * Returns { ok, data, eventId }.
+ * Returns { ok, data, eventId } — always the `connection.create` payload.
+ *
+ * `chainId` + `sourceMemberId` chart the draw from a chain member
+ * (nomadic-chains): the membership write-through (a real occurrence, or a
+ * pointer-leaf when the far side is already chained) commits in the same
+ * transaction; its `chain.member.added` reaches every client — the initiator
+ * included — over realtime rather than riding this response.
  *
  * Access: `map_update` right on the target map.
  */
 
-const createConnectionBodySchema = z.object({
-  sourceMapSystemId: z.string().regex(/^\d+$/),
-  targetMapSystemId: z.string().regex(/^\d+$/),
-  scope: z.enum(connectionScope.enumValues),
-  massStatus: z.enum(whMass.enumValues).optional(),
-  jumpMassClass: z.enum(whJumpMass.enumValues).nullable().optional(),
-  eolStage: z.enum(eolStage.enumValues).optional(),
-  preserveMass: z.boolean().optional(),
-  isRolling: z.boolean().optional(),
-  isStatic: z.boolean().optional(),
-});
+const createConnectionBodySchema = z
+  .object({
+    sourceMapSystemId: z.string().regex(/^\d+$/),
+    targetMapSystemId: z.string().regex(/^\d+$/),
+    scope: z.enum(connectionScope.enumValues),
+    massStatus: z.enum(whMass.enumValues).optional(),
+    jumpMassClass: z.enum(whJumpMass.enumValues).nullable().optional(),
+    eolStage: z.enum(eolStage.enumValues).optional(),
+    preserveMass: z.boolean().optional(),
+    isRolling: z.boolean().optional(),
+    isStatic: z.boolean().optional(),
+    chainId: z.string().regex(/^\d+$/).optional(),
+    sourceMemberId: z.string().regex(/^\d+$/).optional(),
+  })
+  .refine((b) => (b.chainId === undefined) === (b.sourceMemberId === undefined), {
+    message: 'chainId and sourceMemberId must be passed together.',
+  });
 
 export const runtime = 'nodejs';
 
@@ -64,7 +77,17 @@ export const POST = withApiMetrics('/api/map/:mapId/connections', async function
     return Response.json({ ok: false, error: 'Invalid system id.' }, { status: 400 });
   }
 
-  const result = await createConnection({
+  let chain: { chainId: bigint; sourceMemberId: bigint } | undefined;
+  if (parsed.data.chainId !== undefined && parsed.data.sourceMemberId !== undefined) {
+    const chainId = parseBigInt(parsed.data.chainId);
+    const sourceMemberId = parseBigInt(parsed.data.sourceMemberId);
+    if (!chainId || !sourceMemberId) {
+      return Response.json({ ok: false, error: 'Invalid chain context.' }, { status: 400 });
+    }
+    chain = { chainId, sourceMemberId };
+  }
+
+  const input = {
     mapId: guard.mapId,
     characterId: guard.characterId,
     sourceMapSystemId: sourceId,
@@ -76,7 +99,10 @@ export const POST = withApiMetrics('/api/map/:mapId/connections', async function
     preserveMass: parsed.data.preserveMass,
     isRolling: parsed.data.isRolling,
     isStatic: parsed.data.isStatic,
-  });
+  };
+  const result = chain
+    ? await createConnectionWithChainMembership(input, chain)
+    : await createConnection(input);
 
   // Auto-tagging: on a 0121 map a new edge may root an untagged
   // child to its now-known parent. Emit the tag as a separate `system.updated`

@@ -182,6 +182,9 @@ export const apertureConfig = {
   /** Max length of a map note's free-form `content` body. Enforced app-layer (Zod). */
   MAP_NOTE_CONTENT_MAX_LENGTH: 1000,
 
+  /** Max length of a chain tab's `name` (nomadic-chains). Enforced app-layer (Zod). */
+  MAP_CHAIN_NAME_MAX_LENGTH: 40,
+
   /**
    * EVE SSO OAuth2 endpoint paths, joined onto `AUTH_EVE_SSO_BASE`. Paths are
    * stable app constants; the base host is env-configurable (TQ vs SISI).

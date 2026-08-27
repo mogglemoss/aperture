@@ -304,6 +304,9 @@ function collectSystemRefs(event: MapEventPayload): {
     case 'signature.delete':
       primaryMapSystemId = safeBigInt(event.mapSystemId);
       break;
+    case 'chain.member.added':
+      primaryMapSystemId = safeBigInt(event.mapSystemId);
+      break;
     default:
       break;
   }

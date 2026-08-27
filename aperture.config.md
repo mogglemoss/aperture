@@ -42,6 +42,7 @@ A frozen `as const` object exposed as a named export. Grouped by concern:
 - `ROUTE_HUBS` — trade hubs the route module reports jump distance to (EVE system IDs).
 - `MAX_MAPS_PER_SCOPE` — per-scope ceilings for `ap_map.scope`.
 - `MAX_SYSTEMS_PER_MAP` — applied where `ap_map_system.visible = true`.
+- `MAP_CHAIN_NAME_MAX_LENGTH` — chain-tab name ceiling (nomadic-chains), enforced app-layer (Zod).
 
 **Public map share**
 - `PUBLIC_SNAPSHOT_CACHE_TTL_MS`, `PUBLIC_SNAPSHOT_CACHE_MAX_ENTRIES` — lifetime and LRU size of the viewer-independent share-snapshot cache.

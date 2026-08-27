@@ -1,15 +1,18 @@
 import 'server-only';
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/db/client';
 import {
   apCharacter,
   apMap,
+  apMapChain,
+  apMapChainMember,
   apMapCharacterTracking,
   apMapConnection,
   apMapNote,
   apMapSystem,
   apUser,
+  chainKind,
   connectionScope,
   eolStage,
   mapNoteSeverity,
@@ -51,6 +54,7 @@ type SignatureClassKind = (typeof signatureClassKind.enumValues)[number];
 type SignatureActivity = (typeof signatureActivity.enumValues)[number];
 type TagScheme = (typeof tagScheme.enumValues)[number];
 type NoteSeverity = (typeof mapNoteSeverity.enumValues)[number];
+type ChainKind = (typeof chainKind.enumValues)[number];
 
 /** A visible system on a map, flattened with its `universe_system` metadata. */
 export type MapSystemNode = {
@@ -170,6 +174,44 @@ export type MapNote = {
 };
 
 /**
+ * A chain tab (nomadic-chains): the identity of one tree of occurrences over
+ * the map's canonical graph. Mirrors the realtime `chain.created` payload body
+ * (there the personal/shared flavour rides as `chainKind` — `kind` is the
+ * event discriminator).
+ */
+export type MapChain = {
+  /** `ap_map_chain.id` as a string. */
+  id: string;
+  name: string;
+  kind: ChainKind;
+  /** EVE character id of the owner for `personal` chains; null for `shared`. */
+  ownerCharacterId: number | null;
+  /** ISO timestamp. */
+  createdAt: string;
+  /** ISO timestamp. */
+  updatedAt: string;
+};
+
+/**
+ * One occurrence of a canonical system inside a chain's tree. The parent link
+ * records how it was charted; `pointerChainId` non-null marks a pointer-leaf
+ * ("continues in …" / a loop pill) that terminates the branch.
+ */
+export type MapChainMember = {
+  /** `ap_map_chain_member.id` as a string (the chain-mode occurrence-node key). */
+  id: string;
+  chainId: string;
+  /** `ap_map_system.id` of the canonical row (signatures/status/alias live there). */
+  mapSystemId: string;
+  /** Parent member in the tree; null ⇔ the chain's root (its anchor). */
+  parentMemberId: string | null;
+  /** The connection traversed to reach this member; null when collapsed or unknown. */
+  viaConnectionId: string | null;
+  /** Chain this branch continues in (pointer-leaf); null for a real occurrence. */
+  pointerChainId: string | null;
+};
+
+/**
  * Initial roster of online tracked pilots currently in known systems. The
  * client `MapPresenceContext` seeds from this and then merges incoming
  * `characterUpdate` envelopes on top. Mirrors the envelope's resolved fields
@@ -219,6 +261,15 @@ export type MapViewData = {
   connections: MapConnectionEdge[];
   signatures: MapSignature[];
   notes: MapNote[];
+  /**
+   * Chain tabs visible to this viewer: every `shared` chain plus the viewer's
+   * own `personal` chains — other viewers' personal chains never leave the
+   * server on this path (realtime does fan them out; non-owners just don't
+   * render them).
+   */
+  chains: MapChain[];
+  /** Tree memberships of the loaded `chains`, in member-id (creation) order. */
+  chainMembers: MapChainMember[];
   /** Tracked characters online + located on this map at load time. Realtime updates fold on top of this on the client. */
   presence: MapPresenceEntry[];
 };
@@ -401,6 +452,49 @@ export async function loadMapForView(
     .where(eq(apMapNote.mapId, mapId))
     .orderBy(apMapNote.id);
 
+  // Chain tabs (nomadic-chains): shared chains for everyone, personal chains
+  // for their owner only — a foreign personal chain never rides this payload.
+  const chainRows = await db
+    .select({
+      id: apMapChain.id,
+      name: apMapChain.name,
+      kind: apMapChain.kind,
+      ownerCharacterId: apMapChain.ownerCharacterId,
+      createdAt: apMapChain.createdAt,
+      updatedAt: apMapChain.updatedAt,
+    })
+    .from(apMapChain)
+    .where(
+      and(
+        eq(apMapChain.mapId, mapId),
+        or(
+          eq(apMapChain.kind, 'shared'),
+          eq(apMapChain.ownerCharacterId, viewerCharacterId),
+        ),
+      ),
+    )
+    .orderBy(apMapChain.id);
+
+  const chainMemberRows = chainRows.length
+    ? await db
+        .select({
+          id: apMapChainMember.id,
+          chainId: apMapChainMember.chainId,
+          mapSystemId: apMapChainMember.mapSystemId,
+          parentMemberId: apMapChainMember.parentMemberId,
+          viaConnectionId: apMapChainMember.viaConnectionId,
+          pointerChainId: apMapChainMember.pointerChainId,
+        })
+        .from(apMapChainMember)
+        .where(
+          inArray(
+            apMapChainMember.chainId,
+            chainRows.map((c) => c.id),
+          ),
+        )
+        .orderBy(apMapChainMember.id)
+    : [];
+
   const presence = await loadMapPresence(mapId);
 
   return {
@@ -474,6 +568,22 @@ export async function loadMapForView(
       lastEditedByName: n.lastEditedByName,
       createdAt: n.createdAt.toISOString(),
       updatedAt: n.updatedAt.toISOString(),
+    })),
+    chains: chainRows.map((c) => ({
+      id: c.id.toString(),
+      name: c.name,
+      kind: c.kind,
+      ownerCharacterId: c.ownerCharacterId === null ? null : Number(c.ownerCharacterId),
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    chainMembers: chainMemberRows.map((m) => ({
+      id: m.id.toString(),
+      chainId: m.chainId.toString(),
+      mapSystemId: m.mapSystemId.toString(),
+      parentMemberId: m.parentMemberId === null ? null : m.parentMemberId.toString(),
+      viaConnectionId: m.viaConnectionId === null ? null : m.viaConnectionId.toString(),
+      pointerChainId: m.pointerChainId === null ? null : m.pointerChainId.toString(),
     })),
     presence,
   };

@@ -34,6 +34,7 @@ export type AuditEventCategory =
   | 'connection'
   | 'signature'
   | 'note'
+  | 'chain'
   | 'map'
   | 'access';
 
@@ -97,6 +98,7 @@ const DESTRUCTIVE_KINDS: ReadonlySet<MapEventKind> = new Set([
   'map.purge',
   'access.revoked',
   'share.revoked',
+  'chain.deleted',
 ]);
 
 /**
@@ -338,6 +340,9 @@ async function resolveNames(payloads: unknown[]): Promise<ResolvedNames> {
         addId(mapSystemIds, ev.source);
         addId(mapSystemIds, ev.target);
         break;
+      case 'chain.member.added':
+        addId(mapSystemIds, ev.mapSystemId);
+        break;
       default:
         break;
     }
@@ -399,6 +404,9 @@ function buildContext(
       sourceSystemName = nameOf(ev.source);
       targetSystemName = nameOf(ev.target);
       break;
+    case 'chain.member.added':
+      systemName = nameOf(ev.mapSystemId);
+      break;
     default:
       break;
   }
@@ -459,6 +467,7 @@ export async function auditActorSummary(
     connection: 0,
     signature: 0,
     note: 0,
+    chain: 0,
     map: 0,
     access: 0,
   };

@@ -3,6 +3,7 @@ import type {
   AddSystemResult,
   BulkPasteOptions,
   BulkPasteResult,
+  ChainKind,
   ConnectionMassLogEntry,
   ImportResult,
   MapEventPayload,
@@ -80,6 +81,10 @@ export type CreateConnectionBody = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
+  /** Chain tab the draw is charted from (nomadic-chains); pass with `sourceMemberId`. */
+  chainId?: string;
+  /** The chain member on the near end of the draw; pass with `chainId`. */
+  sourceMemberId?: string;
 };
 
 export type UpdateConnectionBody = {
@@ -177,15 +182,20 @@ export async function fetchMapSnapshot(mapId: string): Promise<FetchResult<MapVi
 
 /**
  * Add a system. The route returns N committed event payloads — the
- * `system.added` event plus any auto-created `stargate` gate links to systems
- * already on the map — so callers fold `data.payloads` like a bulk paste
- * (the wrapper-level `eventId` is always `0`).
+ * `system.added` event, a `chain.member.added` when a chain context rides the
+ * call (nomadic-chains write-through), plus any auto-created `stargate` gate
+ * links to systems already on the map — so callers fold `data.payloads` like a
+ * bulk paste (the wrapper-level `eventId` is always `0`).
  */
 export function addSystemOnServer(args: {
   mapId: string;
   systemId: number;
   positionX?: number;
   positionY?: number;
+  /** Chain tab to chart the add into. */
+  chainId?: string;
+  /** Member charted from (requires `chainId`; omit for the chain's root). */
+  parentMemberId?: string;
 }): Promise<ActionResult<AddSystemResult>> {
   const { mapId, ...body } = args;
   return mutationFetch<AddSystemResult>('POST', `/api/map/${mapId}/systems`, body);
@@ -255,6 +265,46 @@ export function deleteNoteOnServer(args: {
   noteId: string;
 }): Promise<ActionResult<MapEventPayload>> {
   return mutationFetch<MapEventPayload>('DELETE', `/api/map/${args.mapId}/notes/${args.noteId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Chain mutations (nomadic-chains tabs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a chain tab. `personal` chains are open to any viewer; `shared`
+ * chains require map management (the route 403s otherwise). Returns the
+ * `chain.created` payload — await-then-apply.
+ */
+export function createChainOnServer(args: {
+  mapId: string;
+  name: string;
+  kind: ChainKind;
+}): Promise<ActionResult<MapEventPayload>> {
+  const { mapId, ...body } = args;
+  return mutationFetch<MapEventPayload>('POST', `/api/map/${mapId}/chains`, body);
+}
+
+/** Rename a chain (owner for personal, map management for shared). Optimistic. */
+export function renameChainOnServer(args: {
+  mapId: string;
+  chainId: string;
+  name: string;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>('PATCH', `/api/map/${args.mapId}/chains/${args.chainId}`, {
+    name: args.name,
+  });
+}
+
+/**
+ * Delete a chain. Its memberships go with it (pointer-leaves in other chains
+ * degrade to plain leaves); canonical systems are untouched. Optimistic.
+ */
+export function deleteChainOnServer(args: {
+  mapId: string;
+  chainId: string;
+}): Promise<ActionResult<MapEventPayload>> {
+  return mutationFetch<MapEventPayload>('DELETE', `/api/map/${args.mapId}/chains/${args.chainId}`);
 }
 
 // ---------------------------------------------------------------------------

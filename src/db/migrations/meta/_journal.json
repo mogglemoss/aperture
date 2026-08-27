@@ -505,6 +505,13 @@
       "when": 1787846155656,
       "tag": "0072_nomadic_chains",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1787847444949,
+      "tag": "0073_chain_event_kinds",
+      "breakpoints": true
     }
   ]
 }

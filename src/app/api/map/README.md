@@ -14,16 +14,19 @@ Every route in this tree obeys these invariants:
 
 4. **Session + rights guard.** Every mutation route calls `requireMapMutate(rawMapId, session, '<right>')` from `utils.ts` (which chains session check + bigint parse + `requireMapRight` from `@/lib/auth/rights`). Read endpoints (e.g. the signature paste resolver) call `requireMapView`. The tuple result is mapped straight into a 401/403/404 response. Existence is never leaked: missing maps and non-viewable maps both return 404. (The WH-type catalog is **not** here — it's static, system-independent reference data served by the global `GET /api/wormhole-types`, session-gated only.)
 
-5. **Per-map rights enforcement.** Every mutation route passes a `MapRight` to `requireMapMutate`. The content-editing routes (systems, connections, signatures, subchain, thera, disconnected) all pass `'map_update'`, which resolves to **view authority** — every viewer can chart, since collaborative mapping is the product. Management routes (import/export pass `'map_import'` / `'map_export'`) resolve to the binary `canManageMap` (admin, private owner, owning-corp Director, or owning-alliance executor-corp Director). Map-settings edits use `requireMapManage` from the Server Action, not these routes. There is no controller path that bypasses these checks; the static-analysis test in `tests/unit/route-rights-coverage.test.ts` blocks regressions.
+5. **Per-map rights enforcement.** Every mutation route passes a `MapRight` to `requireMapMutate`. The content-editing routes (systems, connections, signatures, subchain, thera, disconnected) all pass `'map_update'`, which resolves to **view authority** — every viewer can chart, since collaborative mapping is the product. Management routes (import/export pass `'map_import'` / `'map_export'`) resolve to the binary `canManageMap` (admin, private owner, owning-corp Director, or owning-alliance executor-corp Director). The chain routes pass `'map_update'` and layer a per-kind check on top: `shared` chains additionally require `canManageMap`, `personal` chains answer only to their owner (enforced in `src/lib/map/mutations/chains.ts` — a foreign personal chain reads "Chain not found."). Map-settings edits use `requireMapManage` from the Server Action, not these routes. There is no controller path that bypasses these checks; the static-analysis test in `tests/unit/route-rights-coverage.test.ts` blocks regressions.
 
 ## Routes
 
 | Method | Path | Helper | Event kind |
 |--------|------|--------|-----------|
-| POST | `/api/map/[mapId]/systems` | `addSystem` | `system.added` |
+| POST | `/api/map/[mapId]/systems` | `addSystemWithStargateLinks` | `system.added` (+ `chain.member.added` with chain context, + gate-link `connection.create`s) |
 | PATCH | `/api/map/[mapId]/systems/[systemId]` | `updateSystem` | `system.updated` |
 | DELETE | `/api/map/[mapId]/systems/[systemId]` | `removeSystem` | `system.removed` |
-| POST | `/api/map/[mapId]/connections` | `createConnection` | `connection.create` |
+| POST | `/api/map/[mapId]/connections` | `createConnection` / `createConnectionWithChainMembership` | `connection.create` (+ `chain.member.added` with chain context) |
+| POST | `/api/map/[mapId]/chains` | `createChain` | `chain.created` |
+| PATCH | `/api/map/[mapId]/chains/[chainId]` | `renameChain` | `chain.renamed` |
+| DELETE | `/api/map/[mapId]/chains/[chainId]` | `deleteChain` | `chain.deleted` |
 | PATCH | `/api/map/[mapId]/connections/[connId]` | `updateConnection` | `connection.update` |
 | DELETE | `/api/map/[mapId]/connections/[connId]` | `deleteConnection` | `connection.delete` |
 | POST | `/api/map/[mapId]/connections/[connId]/restore` | `restoreConnection` | `system.added` (per hidden endpoint) + `connection.create` |

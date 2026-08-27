@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import {
   apCharacter,
   apMap,
+  apMapChainMember,
   apMapConnection,
   apMapSystem,
   systemStatus,
@@ -13,6 +14,7 @@ import { buildSystemNode } from '../systemNode';
 import { assignTagOnAdd } from '@/lib/tagging/service';
 import { commitMapEvent, enqueueWebhookDispatch, type ActionResult, type Tx } from './core';
 import { createConnection } from './connections';
+import { attachChainMemberOnSystemAdd, type SystemAddChainContext } from './chains';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -189,6 +191,18 @@ export function removeSystem(input: RemoveSystemInput): Promise<ActionResult<Map
           ),
         );
 
+      // Prune chain occurrences (nomadic-chains): every membership of this
+      // system — real occurrences and pointer-leaves alike, in every chain —
+      // goes, and the parent-FK CASCADE takes each pruned member's whole
+      // subtree with it. Membership is charting state, not intel, so a re-add
+      // joins whichever chain is then active rather than restoring the old
+      // tree position. No extra event: clients mirror this prune (member +
+      // descendant closure) off the single `system.removed` broadcast, the way
+      // they already mirror the connection/signature prunes.
+      await tx
+        .delete(apMapChainMember)
+        .where(eq(apMapChainMember.mapSystemId, input.mapSystemId));
+
       return { id: row.id.toString() };
     },
   });
@@ -252,9 +266,14 @@ export function updateSystem(input: UpdateSystemInput): Promise<ActionResult<Map
  * K-space / Pochven systems pick up gate links; wormhole systems have no
  * stargate edges and so add with zero extra events. A re-added system that
  * already carries `stargate` links to a neighbour is not duplicated.
+ *
+ * `chain` (nomadic-chains) charts the add into a chain tab: the membership
+ * write-through commits a `chain.member.added` in the same transaction, right
+ * after the `system.added` (a no-op when the system already really occurs in
+ * that chain).
  */
 export async function addSystemWithStargateLinks(
-  input: AddSystemInput,
+  input: AddSystemInput & { chain?: SystemAddChainContext },
 ): Promise<ActionResult<AddSystemResult>> {
   try {
     const payloads = await db.transaction(async (tx) => {
@@ -265,6 +284,17 @@ export async function addSystemWithStargateLinks(
       out.push(added.data);
       if (added.data.kind !== 'system.added') throw new Error('Unexpected add payload.');
       const newMapSystemId = BigInt(added.data.id);
+
+      if (input.chain) {
+        const member = await attachChainMemberOnSystemAdd(tx, {
+          mapId: input.mapId,
+          characterId: input.characterId,
+          chainId: input.chain.chainId,
+          parentMemberId: input.chain.parentMemberId,
+          mapSystemId: newMapSystemId,
+        });
+        if (member) out.push(member);
+      }
 
       // Visible systems on this map that share a stargate with the new one. The
       // edge table is bidirectional (one row per direction); matching neighbour→new

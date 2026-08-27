@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  chainKind,
   connectionScope,
   eolStage,
   mapCapability,
@@ -151,6 +152,7 @@ const signatureGroupKeyEnum = z.enum(signatureGroupKey.enumValues);
 const signatureClassKindEnum = z.enum(signatureClassKind.enumValues);
 const signatureActivityEnum = z.enum(signatureActivity.enumValues);
 const mapNoteSeverityEnum = z.enum(mapNoteSeverity.enumValues);
+const chainKindEnum = z.enum(chainKind.enumValues);
 // `view` is implicit (any feature grant implies it) and never rides a delegation
 // event — only the six director features are grantable/revocable.
 const delegatableCapabilityEnum = z.enum(mapCapability.enumValues).exclude(['view']);
@@ -268,6 +270,40 @@ const noteBody = {
   lastEditedByName: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+};
+
+/**
+ * Full chain body — mirrors `MapChain` (loadMap.ts) so a client can append a
+ * freshly-created chain tab straight from the realtime payload. The chain's
+ * personal/shared flavour rides as `chainKind` (the `kind` key is the event
+ * discriminator). Personal chains fan out like everything else — non-owners
+ * simply don't render them (nomadic-chains settled design).
+ */
+const chainBody = {
+  id: z.string(),
+  name: z.string(),
+  chainKind: chainKindEnum,
+  /** Owning character for `personal` chains; null for `shared`. */
+  ownerCharacterId: z.number().int().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+};
+
+/**
+ * Full chain-member body — mirrors `MapChainMember` (loadMap.ts). One occurrence
+ * of a canonical system inside a chain's tree; `pointerChainId` non-null marks a
+ * pointer-leaf ("continues in …"). `chainName` / `pointerChainName` are audit
+ * descriptors (self-contained payload philosophy) — the canvas ignores them.
+ */
+const chainMemberBody = {
+  id: z.string(),
+  chainId: z.string(),
+  mapSystemId: z.string(),
+  parentMemberId: z.string().nullable(),
+  viaConnectionId: z.string().nullable(),
+  pointerChainId: z.string().nullable(),
+  chainName: z.string(),
+  pointerChainName: z.string().nullable().optional(),
 };
 
 export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
@@ -472,15 +508,32 @@ export const mapEventPayloadSchema = z.discriminatedUnion('kind', [
     shareId: z.string(),
     label: z.string(),
   }),
+  z.object({ kind: z.literal('chain.created'), eventId, ...chainBody }),
+  z.object({
+    kind: z.literal('chain.renamed'),
+    eventId,
+    id: z.string(),
+    name: z.string(),
+    updatedAt: z.string(),
+  }),
+  // `name` captured at delete time (the chain row is hard-deleted; members
+  // cascade, pointer-leaves in other chains degrade to plain leaves) so the
+  // audit names the chain after the row is gone.
+  z.object({ kind: z.literal('chain.deleted'), eventId, id: z.string(), name: z.string() }),
+  // Membership accretes at charting time (system add / connection landing /
+  // tracked jump). An upsert on the client: re-delivery or a via-connection
+  // backfill replaces the member body by id.
+  z.object({ kind: z.literal('chain.member.added'), eventId, ...chainMemberBody }),
 ]);
 
 export type MapEventPayload = z.infer<typeof mapEventPayloadSchema>;
 
 /**
- * Seeded `ap_event_kind` values (migrations 0004 + 0014 + 0057 + 0061). The
- * discriminator set. Includes `map.restore`/`map.purge` for the admin maps
+ * Seeded `ap_event_kind` values (migrations 0004 + 0014 + 0057 + 0061 + 0073).
+ * The discriminator set. Includes `map.restore`/`map.purge` for the admin maps
  * panel, `access.granted`/`access.revoked` for per-title feature delegation,
- * and `share.created`/`share.revoked` for public share links.
+ * `share.created`/`share.revoked` for public share links, and the `chain.*`
+ * kinds for nomadic-chains tabs + memberships.
  */
 export const MAP_EVENT_KINDS = [
   'system.added',
@@ -504,6 +557,10 @@ export const MAP_EVENT_KINDS = [
   'access.revoked',
   'share.created',
   'share.revoked',
+  'chain.created',
+  'chain.renamed',
+  'chain.deleted',
+  'chain.member.added',
 ] as const;
 
 export type MapEventKind = (typeof MAP_EVENT_KINDS)[number];

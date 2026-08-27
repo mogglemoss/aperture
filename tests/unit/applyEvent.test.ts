@@ -56,6 +56,8 @@ function viewData(overrides: Partial<MapViewData> = {}): MapViewData {
     connections: [],
     signatures: [],
     notes: [],
+    chains: [],
+    chainMembers: [],
     presence: [],
     ...overrides,
   };

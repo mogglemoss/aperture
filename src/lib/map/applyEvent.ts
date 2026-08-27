@@ -1,5 +1,38 @@
-import type { MapConnectionEdge, MapNote, MapSignature, MapSystemNode, MapViewData } from '@/types';
+import type {
+  MapChain,
+  MapChainMember,
+  MapConnectionEdge,
+  MapNote,
+  MapSignature,
+  MapSystemNode,
+  MapViewData,
+} from '@/types';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
+
+/**
+ * Drop the given members plus their whole descendant closure — the client-side
+ * mirror of the `parent_member_id ON DELETE CASCADE` (the server deletes only
+ * the named members and lets Postgres cascade the subtrees, so the reducer must
+ * walk them itself).
+ */
+function pruneMemberSubtrees(
+  members: MapChainMember[],
+  seedIds: Set<string>,
+): MapChainMember[] {
+  if (seedIds.size === 0) return members;
+  const doomed = new Set(seedIds);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const m of members) {
+      if (m.parentMemberId !== null && doomed.has(m.parentMemberId) && !doomed.has(m.id)) {
+        doomed.add(m.id);
+        grew = true;
+      }
+    }
+  }
+  return members.filter((m) => !doomed.has(m.id));
+}
 
 /**
  * Pure reducer: apply one realtime map event to the current canvas view state.
@@ -32,6 +65,9 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
       // signatures. The server load filters connections to visible-both-endpoint
       // pairs, so mirror that here — otherwise consumers that iterate connections
       // directly (SystemOverlay) keep showing the orphans as "Unknown" until reload.
+      // Chain memberships of the system are pruned server-side in the same
+      // transaction (subtrees cascade via the parent FK) with no event of their
+      // own — mirror that prune too, descendant closure included.
       return {
         ...state,
         systems: state.systems.filter((s) => s.id !== payload.id),
@@ -39,6 +75,12 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
           (c) => c.source !== payload.id && c.target !== payload.id,
         ),
         signatures: state.signatures.filter((s) => s.mapSystemId !== payload.id),
+        chainMembers: pruneMemberSubtrees(
+          state.chainMembers,
+          new Set(
+            state.chainMembers.filter((m) => m.mapSystemId === payload.id).map((m) => m.id),
+          ),
+        ),
       };
 
     case 'system.updated': {
@@ -108,6 +150,11 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
         // signature whose DB row is gone (deleting it would 400 "Signature not
         // found.").
         signatures: state.signatures.filter((s) => s.mapConnectionId !== payload.id),
+        // ap_map_chain_member.via_connection_id is ON DELETE SET NULL — a
+        // collapsed hole leaves the occurrence in place. Mirror the SET NULL.
+        chainMembers: state.chainMembers.map((m) =>
+          m.viaConnectionId === payload.id ? { ...m, viaConnectionId: null } : m,
+        ),
       };
 
     case 'map.update': {
@@ -197,6 +244,67 @@ export function applyEvent(state: MapViewData, payload: MapEventPayload): MapVie
 
     case 'note.deleted':
       return { ...state, notes: state.notes.filter((n) => n.id !== payload.id) };
+
+    case 'chain.created': {
+      // Full chain body; the event's `chainKind` maps onto MapChain.kind (the
+      // payload key `kind` is the discriminator). Personal chains of other
+      // viewers fold in too — the render layer filters by ownership, not the
+      // reducer (it has no viewer identity).
+      const chain: MapChain = {
+        id: payload.id,
+        name: payload.name,
+        kind: payload.chainKind,
+        ownerCharacterId: payload.ownerCharacterId,
+        createdAt: payload.createdAt,
+        updatedAt: payload.updatedAt,
+      };
+      const exists = state.chains.some((c) => c.id === chain.id);
+      return {
+        ...state,
+        chains: exists
+          ? state.chains.map((c) => (c.id === chain.id ? chain : c))
+          : [...state.chains, chain],
+      };
+    }
+
+    case 'chain.renamed':
+      return {
+        ...state,
+        chains: state.chains.map((c) =>
+          c.id === payload.id ? { ...c, name: payload.name, updatedAt: payload.updatedAt } : c,
+        ),
+      };
+
+    case 'chain.deleted':
+      // Members cascade with the chain; pointer-leaves elsewhere that named it
+      // degrade to plain leaves (pointer_chain_id SET NULL). Mirror both.
+      return {
+        ...state,
+        chains: state.chains.filter((c) => c.id !== payload.id),
+        chainMembers: state.chainMembers
+          .filter((m) => m.chainId !== payload.id)
+          .map((m) => (m.pointerChainId === payload.id ? { ...m, pointerChainId: null } : m)),
+      };
+
+    case 'chain.member.added': {
+      // Upsert by id: re-delivery and the via-connection backfill both arrive
+      // as the full member body.
+      const member: MapChainMember = {
+        id: payload.id,
+        chainId: payload.chainId,
+        mapSystemId: payload.mapSystemId,
+        parentMemberId: payload.parentMemberId,
+        viaConnectionId: payload.viaConnectionId,
+        pointerChainId: payload.pointerChainId,
+      };
+      const exists = state.chainMembers.some((m) => m.id === member.id);
+      return {
+        ...state,
+        chainMembers: exists
+          ? state.chainMembers.map((m) => (m.id === member.id ? member : m))
+          : [...state.chainMembers, member],
+      };
+    }
 
     case 'map.create':
     case 'map.delete':

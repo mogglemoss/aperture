@@ -196,6 +196,25 @@ export function describeMapEvent(event: MapEventPayload, ctx: WebhookEventContex
       return `published public share link **${event.label}** (${describeShareProfile(event)})`;
     case 'share.revoked':
       return `revoked public share link **${event.label}**`;
+    case 'chain.created':
+      return `created ${event.chainKind} chain **${event.name}**`;
+    case 'chain.renamed':
+      return `renamed a chain to **${event.name}**`;
+    case 'chain.deleted':
+      return `deleted chain **${event.name}**`;
+    case 'chain.member.added': {
+      const system = ctx.systemName ?? 'a system';
+      if (event.pointerChainId === null) {
+        return `charted **${system}** into chain **${event.chainName}**`;
+      }
+      // A pointer-leaf: a loop when it names its own chain, otherwise a
+      // continues-in link to another chain.
+      if (event.pointerChainId === event.chainId) {
+        return `marked a loop to **${system}** in chain **${event.chainName}**`;
+      }
+      const dest = event.pointerChainName ?? 'another chain';
+      return `linked **${system}** in chain **${event.chainName}** onward to **${dest}**`;
+    }
     default:
       return null;
   }

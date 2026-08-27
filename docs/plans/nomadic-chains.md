@@ -34,8 +34,17 @@
 **Goal:** Chains are creatable/renamable/deletable through guarded routes, memberships accrete automatically as charting happens, and every change fans out as map events.
 **References:** `src/app/api/map/README.md`, `src/lib/map/mutations/systems.md` + `connections.md` + `core.md`, `src/lib/map/applyEvent.md`, `src/lib/auth/rights.md` (`canManageMap` for shared chains).
 **Touches:** new `src/lib/map/mutations/chains.ts` (+ `.md`), new API routes under `src/app/api/map/[mapId]/chains/`, `src/lib/map/mutations/systems.ts` (accept optional `chainId` + source-membership context on create), `src/lib/map/applyEvent.ts`, `src/lib/map/client.ts`, event-kind registry.
-**Spec:** create (personal: any viewer; shared: `requireMapManage`), rename, delete (delete removes memberships, never canonical systems). Membership write-through: system.added carrying a `chainId` (+ the source member for parentage) inserts a membership in the same transaction/event batch; a connection landing on a system already in another chain (or the same chain) inserts a pointer-leaf membership instead. Location-tracked jumps thread the source membership from the pilot's previous system's membership in the pilot's chain context. Connection/system removal prunes descendant memberships (CASCADE via parent FK does the tree; verify the event payloads let clients converge without reload).
-**Done when:** two-browser test: personal chain invisible to the second user; shared chain live-appears; charting from a tab grows the right tree; cross-link produces a pointer-leaf row; checks green.
+**Spec:** create (personal: any viewer; shared: `requireMapManage`), rename, delete (delete removes memberships, never canonical systems). Membership write-through: system.added carrying a `chainId` (+ the source member for parentage) inserts a membership in the same transaction/event batch; a connection landing on a system already in another chain (or the same chain) inserts a pointer-leaf membership instead. System removal prunes the system's memberships in every chain (CASCADE via parent FK does the subtrees; clients mirror the prune off `system.removed` — no event of its own). Location-tracked jumps are Stage 2b — the attach helpers in `src/lib/map/mutations/chains.ts` are the seam.
+**Done when:** integration tests cover personal-chain privacy (write path + `loadMapForView`), shared-chain manage gating, write-through membership shapes (root/child, via backfill, loop + cross-chain pointer-leaves), and the prune cascade; `pnpm typecheck && pnpm lint && pnpm test` green. (The two-browser check is human work — moved to `## Manual verification`, workable once Stage 4 renders chains.)
+
+## Stage 2b — Tracking-driven membership
+**Mode:** Execute
+**Status:** todo
+**Goal:** A tracked pilot's wormhole jump accretes chain membership: the new system lands as a child of the member they jumped from, in every chain that holds a real occurrence of the from-system.
+**References:** `src/lib/jobs/locationCommit.md`, `src/lib/jobs/tasks/locationPoll.md`, `src/lib/map/mutations/chains.md` (the attach helpers are the seam — deliberately no `server-only`, callable from the plain-Node fold).
+**Touches:** `src/lib/jobs/locationCommit.ts` (+ `.md`), an integration test for the fold's membership cases.
+**Spec:** thread membership in `foldWormholeJumpOntoMap` after `ensureConnection`: for each chain holding a *real* member of the `from` map-system (per-chain fan-out — every such chain grows), apply the Stage 2 connection-attach semantics to the traversed connection (`attachChainMemberOnConnection` implements them: a tree-adjacent traversal no-ops after the one-time via backfill; a landing on an unchained system accretes a real child member; a landing on an already-chained system accretes a pointer-leaf, once per parent). Two constraints beyond Stage 2's rules: shuttling repeatedly across known holes must write nothing after the first pass, and the `addNewSystems = false` presence-gated path must accrete no membership at all. Each attach rides the fold's per-step transaction pattern (idempotent on the retry a mid-fold failure causes).
+**Done when:** an integration test drives `foldWormholeJumpOntoMap` over a seeded chain: a jump from a chained system creates the child member; the return jump creates nothing; a jump landing on a system chained elsewhere creates one pointer-leaf; the presence-gated path writes no membership; checks green.
 
 ## Stage 3 — Forest layout engine + LOD spec
 **Mode:** Execute
@@ -58,7 +67,7 @@
 **Mode:** Execute
 **Status:** todo
 **Goal:** The map page gains a wrapping tab strip (All + this viewer's chains + shared chains) and a chain-mode canvas that renders one chain as a generated tree with occurrence nodes; the free-canvas mode is untouched and remains the default.
-**References:** `src/lib/map/chains/layout.md` + `collapse.md` (Stage 3's modules), `src/components/map/MapCanvas.md`, `src/components/map/SystemNode.md`.
+**References:** `src/lib/map/chains/layout.md` + `collapse.md` (Stage 3's modules), `src/components/map/MapCanvas.md`, `src/components/map/SystemNode.md`, `src/lib/map/client.md` (the chain lifecycle helpers + the `chainId`/`parentMemberId`/`sourceMemberId` body fields the charting calls already accept), `src/lib/map/applyEvent.md` (chain state already folds; `MapViewData.chains`/`chainMembers` carry the load).
 **Touches:** `src/components/map/MapCanvas.tsx`, new `ChainTabStrip.tsx` + chain-mode render path (+ companions).
 **Done when:** switching tabs re-renders in <100ms on a 40-system chain; occurrence nodes carry full SystemNode affordances (status, sigs, notes indicator); pointer-leaves render and navigate; charting inside the tab grows it live; checks green.
 
@@ -113,7 +122,7 @@
 
 ## Manual verification
 _(worked by the user once, after the run — the plan is not complete until it passes)_
-- **Stage 2** — two accounts: personal chains stay private; a shared chain appears/disappears live for both; deleting a chain never deletes systems from the map.
+- **Stage 2** — two accounts: personal chains stay private; a shared chain appears/disappears live for both; charting from a tab grows the right tree and a cross-link produces a pointer-leaf; deleting a chain never deletes systems from the map. *(Needs Stage 4's tab strip / chain view to observe — work this after Stage 4.)*
 - **Stage 4** — Wingspan-parity feel test on a real scanned chain: root on top, depth downward, pointer-leaf on a cross-link, tab switch speed.
 - **Stage 5** — the All view at real corp scale reads as "Tripwire but coherent": chains separated, blobs legible, horizontal scroll natural.
 - **Stage 7** — the badge for a chain you're sitting inside says 0; a chain across the map agrees with a hand-computed dotlan route.
@@ -123,3 +132,7 @@ _(worked by the user once, after the run — the plan is not complete until it p
 _(appended by executing sessions — non-obvious findings only)_
 - **Stage 1** — the planned full `UNIQUE(chain_id, map_system_id)` was wrong: a *loop* pointer-leaf targets a system already occurring in its own chain, so uniqueness is a partial index excluding pointer-leaves (`WHERE pointer_chain_id IS NULL`). Settled design + Stage 1 spec corrected in place.
 - The fork tracks upstream PR #242 (scoped system notes); if it merges mid-plan, resync before continuing — the note-side machinery this plan touches lightly (notes indicator on occurrence nodes) changes shape there.
+- **Stage 2** — tracking-driven membership was split out as Stage 2b rather than half-wired: threading it needs per-chain fan-out semantics, back-jump no-op rules, and presence-gate interplay inside `locationCommit`'s per-step transaction pattern — more than a modest change to the fold. The seam is clean: the attach helpers in `src/lib/map/mutations/chains.ts` carry all the accretion semantics and deliberately omit `server-only` so the plain-Node fold can call them.
+- **Stage 2** — no `chain.member.removed` event kind exists: membership prunes ride the events that cause them (`system.removed` → member + descendant closure; `connection.delete` → via SET NULL; `chain.deleted` → member cascade + pointer degrade), each mirrored in `applyEvent` like the existing signature-cascade mirror. A future manual "detach member" feature would need a new kind.
+- **Stage 2** — `POST /connections` keeps its single-payload response shape with chain context; the `chain.member.added` reaches the initiator over realtime (its eventId is never in the dedupe set). `POST /systems` returns the member payload in `payloads` instead (it already had the array shape).
+- **Stage 2** — dev-DB quirk: on a fresh `aperture-postgres:dev` container (no SDE ingest), `tests/integration/map-system-connection-mutations.test.ts`'s "wormholeCatalog … matchesClass" test fails (expects real SDE rows R943/S199 in `universe_wormhole`) — pre-existing, fails identically on a clean tree. The DB suites also interfere when several run in one parallel vitest invocation (shared fixtures) — run them one file at a time.
