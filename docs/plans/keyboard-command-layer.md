@@ -5,7 +5,7 @@
 
 ## Stage 1 — Command palette
 **Mode:** Execute
-**Status:** done — f259162
+**Status:** done — bd03404
 **Goal:** A ⌘K/Ctrl-K palette on the map page listing context-aware actions — selection-dependent entries (set status, toggle EOL stage, mass stage, lock, rally, remove) plus global ones (add system, jump to system by name/alias — reusing the sig-search jump, open notes browser, open settings) — each dispatching the exact callback the equivalent button already uses.
 **References:** `src/components/map/MapCanvas.md`, `src/components/sidebar/InspectorModule.md` (the per-system action vocabulary and their commit callbacks), shadcn/ui Command component (add via the project's component pipeline).
 **Touches:** new `src/components/map/CommandPalette.tsx` (+ `.md`), `src/components/map/MapCanvas.tsx` (mount + wire callbacks), `package.json` only if the Command primitive needs `cmdk`.
@@ -13,7 +13,7 @@
 
 ## Stage 2 — Single-key operations + graph navigation
 **Mode:** Execute
-**Status:** done — 07a5e7a
+**Status:** done — a465891
 **Goal:** Bare keys for the hot loop: `s` cycle status, `L` lock toggle, `r` rally toggle on the selected system; `e` cycle EOL stage, `m` cycle mass on the selected connection; `/` opens the palette. `h/j/k/l` + arrows move selection to the nearest connected system in that direction (graph-adjacent first, falling back to nearest by position); `Esc` clears selection. A `?` overlay lists the bindings. **No remove keybind** — MapCanvas carries a deliberate invariant that no bare key may delete systems (a stray keypress must never wipe the map); removal stays in the palette, where invoking it is a deliberate two-step. Lock is `L` (capital) because `l` is vim-right. The note-dialog focus key is dropped (the dialog is module-internal state; not worth a refactor).
 **References:** `src/components/map/MapCanvas.md` (selection + callbacks), Stage 1's palette (shares the action registry so bindings and palette entries can't drift apart).
 **Touches:** new `src/lib/map/keyboardActions.ts` (+ `.md`) — the shared action registry; `src/components/map/MapCanvas.tsx`; `src/components/map/CommandPalette.tsx`.
