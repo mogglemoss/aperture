@@ -21,7 +21,7 @@
 
 ## Stage 1 — Chain schema
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 3d5bb16
 **Goal:** `ap_map_chain` + `ap_map_chain_member` exist with the settled shape, migrated and typed.
 **References:** `src/db/schema/ap/map_system.md`, `map_connection.md`, `structure.md` (audit-FK conventions), CLAUDE.md "Database".
 **Touches:** `src/db/schema/ap/enums.ts` (+`chain_kind` pgEnum `personal|shared`), new `src/db/schema/ap/map_chain.ts` + `map_chain_member.ts` (+ companions), `src/db/schema/ap/user.ts` (`chain_blob_threshold`), `src/db/schema/index.ts`, `src/types/index.ts`, one migration + rollback.
