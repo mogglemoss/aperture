@@ -42,6 +42,9 @@ export const apUser = pgTable('ap_user', {
   routeAvoidCritical: boolean('route_avoid_critical').notNull().default(false),
   routeAvoidEol: boolean('route_avoid_eol').notNull().default(false),
   routeIncludeEveScout: boolean('route_include_eve_scout').notNull().default(false),
+  // nomadic-chains: a chain with more systems than this renders collapsed to
+  // its blob even at full zoom (a session-local expand overrides per chain).
+  chainBlobThreshold: integer('chain_blob_threshold').notNull().default(15),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

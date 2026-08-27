@@ -39,4 +39,6 @@ export * from './ap/system_note_event';
 export * from './ap/integration_token';
 export * from './ap/character_presence';
 export * from './ap/map_share';
+export * from './ap/map_chain';
+export * from './ap/map_chain_member';
 export * from './ap/sde_state';

@@ -20,6 +20,7 @@
   - `route_avoid_reduced` / `route_avoid_critical` (`routeAvoidReduced` / `routeAvoidCritical`) — `boolean NOT NULL DEFAULT false`. Drop reduced- / critical-mass wormholes from the routed graph.
   - `route_avoid_eol` (`routeAvoidEol`) — `boolean NOT NULL DEFAULT false`. Drop wormholes whose `eol_stage <> 'none'`.
   - `route_include_eve_scout` (`routeIncludeEveScout`) — `boolean NOT NULL DEFAULT false`. Fold the public EVE-Scout Thera/Turnur connections into the routed graph.
+- `chain_blob_threshold` — `integer NOT NULL DEFAULT 15` (migration 0072). nomadic-chains: a chain with more systems than this renders collapsed to its blob even at full zoom; a session-local expand overrides per chain.
 - `created_at` / `updated_at` — `timestamptz`, default `now()`.
 
 One user is created per newly-seen character. Additional characters are linked onto an existing user via the SSO tile grid / "add character" flow; `ap_character.user_id` FKs here.

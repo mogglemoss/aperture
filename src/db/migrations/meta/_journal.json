@@ -498,6 +498,13 @@
       "when": 1787238498639,
       "tag": "0071_system_note_body_trgm",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1787846155656,
+      "tag": "0072_nomadic_chains",
+      "breakpoints": true
     }
   ]
 }

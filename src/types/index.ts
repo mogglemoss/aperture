@@ -31,6 +31,8 @@ import type {
   apStructureEvent,
   apSystemNote,
   apSystemNoteEvent,
+  apMapChain,
+  apMapChainMember,
   apSystemStats,
   apUser,
   universeCategory,
@@ -66,6 +68,7 @@ import type {
   signatureGroupKey,
   structureEventKind,
   systemNoteEventKind,
+  chainKind,
   tagScheme,
   whJumpMass,
 } from '@/db/schema/ap/enums';
@@ -232,6 +235,12 @@ export type NewApSystemNote = InferInsertModel<typeof apSystemNote>;
 export type ApSystemNoteEvent = InferSelectModel<typeof apSystemNoteEvent>;
 export type NewApSystemNoteEvent = InferInsertModel<typeof apSystemNoteEvent>;
 
+export type ApMapChain = InferSelectModel<typeof apMapChain>;
+export type NewApMapChain = InferInsertModel<typeof apMapChain>;
+
+export type ApMapChainMember = InferSelectModel<typeof apMapChainMember>;
+export type NewApMapChainMember = InferInsertModel<typeof apMapChainMember>;
+
 export type ApSdeState = InferSelectModel<typeof apSdeState>;
 export type NewApSdeState = InferInsertModel<typeof apSdeState>;
 
@@ -247,6 +256,7 @@ export type SharePresenceMode = (typeof sharePresenceMode.enumValues)[number];
 export type SignatureGroupKey = (typeof signatureGroupKey.enumValues)[number];
 export type StructureEventKind = (typeof structureEventKind.enumValues)[number];
 export type SystemNoteEventKind = (typeof systemNoteEventKind.enumValues)[number];
+export type ChainKind = (typeof chainKind.enumValues)[number];
 export type TagScheme = (typeof tagScheme.enumValues)[number];
 export type WhJumpMass = (typeof whJumpMass.enumValues)[number];
 

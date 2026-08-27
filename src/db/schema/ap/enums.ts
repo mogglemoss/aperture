@@ -206,6 +206,14 @@ export const systemNoteEventKind = pgEnum('system_note_event_kind', [
 ]);
 
 /**
+ * Who may see (and mutate) a chain tab (`ap_map_chain.kind`). `personal` chains
+ * belong to one character and render only for them; `shared` chains are
+ * director-created and render for every viewer of the map — the "temporary
+ * corp op" tab.
+ */
+export const chainKind = pgEnum('chain_kind', ['personal', 'shared']);
+
+/**
  * The auto-tagging scheme a map runs (`ap_map.tag_scheme`).
  * - `none` — no auto-tagging; the `tag` column is manual-only.
  * - `abc` — per-WH-class sequential letters (A, B, C, … per class).

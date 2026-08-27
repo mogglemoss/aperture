@@ -23,6 +23,8 @@ Re-exports `ApStructure` / `ApStructureEvent` row types, `StructureEventKind` (t
 
 Re-exports `ApSystemNote` / `ApSystemNoteEvent` row types, `SystemNoteEventKind` (the `system_note_event_kind` pgEnum), `SystemNoteCategoryDef` (one entry of the config-defined category vocabulary — the stored column is plain text), the read-side view-models `SystemNote` / `SystemNoteSearchResult` (`src/lib/system-notes/read.ts`), the system-note mutation input types (incl. `UpdateSystemNotePatch`), and the system-note client body shapes (`CreateSystemNoteBody` / `UpdateSystemNoteBody`).
 
+nomadic-chains adds `ApMapChain` / `ApMapChainMember` row types (`+ New*`) and the `ChainKind` enum union (`'personal' | 'shared'`), from `src/db/schema/ap/map_chain.ts` / `map_chain_member.ts`.
+
 The "add system manually" flow re-exports `SystemSearchResult` (`src/lib/map/systemSearch.ts`) — a solar-system search row used by `AddSystemDialog`.
 
 The structure owner picker re-exports `CorpSearchResult` (`src/lib/structures/corpSearch.ts`) — `{ id, name }` corporation matches for the `StructureFormDialog` autocomplete.

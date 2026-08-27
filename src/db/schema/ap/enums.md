@@ -68,6 +68,9 @@
 ### systemNoteEventKind
 `pgEnum('system_note_event_kind', ['create', 'update', 'delete'])` — the mutation recorded in `ap_system_note_event`, the append-only accountability log for global system notes.
 
+### chainKind
+`pgEnum('chain_kind', ['personal', 'shared'])` — who may see (and mutate) a chain tab (`ap_map_chain.kind`). `personal` chains belong to one character and render only for them; `shared` chains are director-created and render for every viewer of the map. Added migration 0072 (nomadic-chains).
+
 ### tagScheme
 `pgEnum('tag_scheme', ['none', 'abc', '0121'])` — the auto-tagging scheme a map runs (`ap_map.tag_scheme`, default `none`). `abc` = per-WH-class sequential letters; `0121` = positional chain numbering off the Home system. Adding a third scheme is additive (one `ALTER TYPE … ADD VALUE` + a strategy module + a `registry.ts` line).
 
