@@ -21,6 +21,8 @@ import { arrayMove } from '@dnd-kit/sortable';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout';
 import type {
   Breakpoint,
+  ChainKind,
+  ChainLayoutOrientation,
   ConnectionEnd,
   LiveShareBadge,
   MapCapability,
@@ -51,10 +53,13 @@ import {
   snapToGrid as snapPointToGrid,
   type Point,
 } from '@/lib/map/placement';
+import { buildChainCanvas, sortChainsForTabs } from '@/lib/map/chains/view';
 import {
   addSystemOnServer,
+  createChainOnServer,
   createConnectionOnServer,
   createSignatureOnServer,
+  deleteChainOnServer,
   deleteConnectionOnServer,
   deleteDisconnectedOnServer,
   deleteSignatureOnServer,
@@ -65,6 +70,7 @@ import {
   fetchSystemSignatures,
   pingSystemOnServer,
   removeSystemOnServer,
+  renameChainOnServer,
   updateConnectionOnServer,
   updateSignatureOnServer,
   updateSystemOnServer,
@@ -149,6 +155,14 @@ import { MapUnderglowProvider } from './MapUnderglowContext';
 import { MapUnderglowBridge } from './MapUnderglowBridge';
 import { SystemNode, type SystemNodeData } from './SystemNode';
 import { MapNoteNode, type MapNoteNodeData } from './MapNoteNode';
+import {
+  ChainCanvas,
+  CHAIN_TILE_PARAMS,
+  type ChainCanvasNode,
+  type ChainFocusRequest,
+} from './ChainCanvas';
+import { ChainTabStrip } from './ChainTabStrip';
+import type { ChainPointerNodeData } from './ChainPointerNode';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
@@ -264,6 +278,30 @@ const edgeTypes = { connection: ConnectionEdge };
 type CanvasNode = Node<SystemNodeData> | Node<MapNoteNodeData>;
 const noteNodeId = (noteId: string) => `note:${noteId}`;
 
+// Resolve each connection's source wormhole from its attached signatures,
+// preferring the named side over the K162 reverse-exit (the named hole carries
+// the routing / mass / lifetime static data). Feeds the edge detail popover on
+// both the free canvas and the chain-mode tree.
+function buildWormholeByConnection(
+  signatures: MapSignature[],
+): Map<string, { typeId: number; code: string | null }> {
+  const whByConn = new Map<string, { typeId: number; code: string | null }>();
+  for (const sig of signatures) {
+    if (sig.mapConnectionId == null || sig.typeId == null) continue;
+    const existing = whByConn.get(sig.mapConnectionId);
+    if (!existing || (existing.code === 'K162' && sig.wormholeCode !== 'K162')) {
+      whByConn.set(sig.mapConnectionId, { typeId: sig.typeId, code: sig.wormholeCode });
+    }
+  }
+  return whByConn;
+}
+
+// Per-map chain-view display preference (nomadic-chains): which tab is active
+// (null = All / free canvas) and which way the tree grows. Client-persisted in
+// localStorage beside the viewport pref — a display toggle, no schema.
+type ChainViewPref = { activeChainId: string | null; orientation: ChainLayoutOrientation };
+const chainViewStorageKey = (mapId: string) => `aperture:map:${mapId}:chainView`;
+
 /** A pending "also delete the subchain?" offer raised by a deleted wormhole sig. */
 type SubchainSigOffer = {
   headId: string;
@@ -295,6 +333,7 @@ export function MapCanvas({
   viewerCharacterIds,
   viewerCharacters,
   mainCharacterId,
+  sessionCharacterId,
   routePrefs,
   routeDestinations,
   mapLayout,
@@ -324,6 +363,12 @@ export function MapCanvas({
   viewerCharacters: { id: number; name: string }[];
   /** The account's main character id (route planner's default source), or null. */
   mainCharacterId: number | null;
+  /**
+   * The signed-in (session) character id. Personal chains are filtered to this
+   * owner — mirroring `loadMapForView`, so a foreign personal chain arriving
+   * over realtime never renders.
+   */
+  sessionCharacterId: number;
   /** Per-account route-planner settings (routes-module). */
   routePrefs: RoutePrefs;
   /** The account's saved route destinations (routes-module). */
@@ -548,6 +593,76 @@ export function MapCanvas({
       return null;
     }
   });
+  // Last free-canvas viewport (starts at the stored one). Read at every mount of
+  // the free ReactFlow, so returning from a chain tab restores the viewport the
+  // user left rather than the page-load one.
+  const lastViewportRef = useRef<Viewport | null>(initialViewport);
+
+  // ---- Chain mode (nomadic-chains) ---------------------------------------
+  // Which tab is active (null = All / free canvas) + tree orientation; a
+  // per-user display preference persisted per map in localStorage.
+  const [chainView, setChainView] = useState<ChainViewPref>(() => {
+    try {
+      const raw = localStorage.getItem(chainViewStorageKey(data.map.id));
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<ChainViewPref>;
+        return {
+          activeChainId: typeof parsed.activeChainId === 'string' ? parsed.activeChainId : null,
+          orientation: parsed.orientation === 'root-left' ? 'root-left' : 'root-top',
+        };
+      }
+    } catch {
+      // fall through to the default
+    }
+    return { activeChainId: null, orientation: 'root-top' };
+  });
+  const updateChainView = useCallback(
+    (patch: Partial<ChainViewPref>) => {
+      setChainView((prev) => {
+        const next = { ...prev, ...patch };
+        try {
+          localStorage.setItem(chainViewStorageKey(data.map.id), JSON.stringify(next));
+        } catch {
+          // preference persistence is best-effort
+        }
+        return next;
+      });
+    },
+    [data.map.id],
+  );
+  // One-shot "center the chain canvas on this system" request (pointer-leaf
+  // navigation, jump-to-system while a chain tab is open).
+  const [chainFocus, setChainFocus] = useState<ChainFocusRequest | null>(null);
+  const focusTokenRef = useRef(0);
+  const requestChainFocus = useCallback((mapSystemId: string) => {
+    focusTokenRef.current += 1;
+    setChainFocus({ token: focusTokenRef.current, mapSystemId });
+  }, []);
+  // Chains visible to this viewer: every shared chain plus the session
+  // character's own personal chains, in tab order. Realtime fans out foreign
+  // personal chains too — they are filtered here, mirroring `loadMapForView`.
+  const visibleChains = useMemo(
+    () =>
+      sortChainsForTabs(
+        viewData.chains.filter(
+          (c) => c.kind === 'shared' || c.ownerCharacterId === sessionCharacterId,
+        ),
+      ),
+    [viewData.chains, sessionCharacterId],
+  );
+  const activeChain = useMemo(
+    () =>
+      chainView.activeChainId
+        ? (visibleChains.find((c) => c.id === chainView.activeChainId) ?? null)
+        : null,
+    [visibleChains, chainView.activeChainId],
+  );
+  // Mirrored into a ref so mode-agnostic callbacks (jump-to-system, sig search)
+  // can branch without re-memoizing on every tab switch.
+  const activeChainIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeChainIdRef.current = activeChain?.id ?? null;
+  }, [activeChain]);
 
   // ---- Free-form dashboard layout (map-layout-builder) -------------------
   // Seeded from the saved per-account layout; `null` ⇒ the default arrangement.
@@ -870,6 +985,16 @@ export function MapCanvas({
   const handleNavigateToSig = useCallback((systemId: string, sigId: string) => {
     setSelected({ kind: 'system', id: systemId });
     setSelectedSystemIds(new Set([systemId]));
+    if (activeChainIdRef.current) {
+      // Chain mode: the free-canvas flow instance is unmounted — focus the
+      // occurrence through the chain canvas instead (no-op when the system
+      // has no occurrence in the open chain).
+      requestChainFocus(systemId);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      setFlashSigId(sigId);
+      flashTimer.current = setTimeout(() => setFlashSigId(null), 3000);
+      return;
+    }
     const inst = flowInstance.current;
     const node = inst?.getNode(systemId);
     if (inst && node) {
@@ -884,7 +1009,7 @@ export function MapCanvas({
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashSigId(sigId);
     flashTimer.current = setTimeout(() => setFlashSigId(null), 3000);
-  }, []);
+  }, [requestChainFocus]);
 
   useMapSubscription(Number(data.map.id));
 
@@ -1158,6 +1283,40 @@ export function MapCanvas({
   const onAddSystem = useCallback(
     (systemId: number) => {
       const occupied: Point[] = viewData.systems.map((s) => ({ x: s.positionX, y: s.positionY }));
+      // A chain tab is open: the add charts into it (settled design — manual
+      // adds join the active chain). Parent = the selected occurrence's member,
+      // else the chain's root, else the add becomes the root. The free-canvas
+      // position anchors on the parent's canonical spot (the chain-mode
+      // viewport is a different plane, so cursor/viewport anchors don't apply).
+      if (activeChain) {
+        pendingAddPoint.current = null;
+        const realMembers = viewData.chainMembers.filter(
+          (m) => m.chainId === activeChain.id && m.pointerChainId === null,
+        );
+        const selectedMember =
+          selected?.kind === 'system'
+            ? realMembers.find((m) => m.mapSystemId === selected.id)
+            : undefined;
+        const parentMember = selectedMember ?? realMembers.find((m) => m.parentMemberId === null);
+        const parentSystem = parentMember
+          ? viewData.systems.find((s) => s.id === parentMember.mapSystemId)
+          : undefined;
+        const anchorPoint: Point = parentSystem
+          ? { x: parentSystem.positionX, y: parentSystem.positionY }
+          : { x: 0, y: 0 };
+        const pos = findOpenPosition(anchorPoint, occupied);
+        void addSystemOnServer({
+          mapId,
+          systemId,
+          positionX: pos.x,
+          positionY: pos.y,
+          chainId: activeChain.id,
+          ...(parentMember ? { parentMemberId: parentMember.id } : {}),
+        }).then((result) => {
+          if (result.ok) onBulkPaste(result.data.payloads);
+        });
+        return;
+      }
       let anchor: Point | null = null;
       const pending = pendingAddPoint.current;
       if (pending) {
@@ -1191,7 +1350,7 @@ export function MapCanvas({
         if (result.ok) onBulkPaste(result.data.payloads);
       });
     },
-    [mapId, onBulkPaste, selected, viewData.systems],
+    [mapId, onBulkPaste, selected, viewData.systems, viewData.chainMembers, activeChain],
   );
 
   // Pane "Add system" entry point: remember the cursor point so `onAddSystem`
@@ -1719,6 +1878,7 @@ export function MapCanvas({
 
   const onMoveEnd = useCallback(
     (_: MouseEvent | TouchEvent | null, vp: Viewport) => {
+      lastViewportRef.current = vp;
       localStorage.setItem(`aperture:map:${mapId}:viewport`, JSON.stringify(vp));
     },
     [mapId],
@@ -1820,18 +1980,7 @@ export function MapCanvas({
   }
 
   const edges = useMemo<Edge<ConnectionEdgeData>[]>(() => {
-    // Resolve each connection's source wormhole from its attached signatures,
-    // preferring the named side over the K162 reverse-exit (the named hole is the
-    // one carrying routing / mass / lifetime static data). Feeds the edge's
-    // detail popover.
-    const whByConn = new Map<string, { typeId: number; code: string | null }>();
-    for (const sig of viewData.signatures) {
-      if (sig.mapConnectionId == null || sig.typeId == null) continue;
-      const existing = whByConn.get(sig.mapConnectionId);
-      if (!existing || (existing.code === 'K162' && sig.wormholeCode !== 'K162')) {
-        whByConn.set(sig.mapConnectionId, { typeId: sig.typeId, code: sig.wormholeCode });
-      }
-    }
+    const whByConn = buildWormholeByConnection(viewData.signatures);
 
     return viewData.connections.map((c) => {
       const wh = whByConn.get(c.id) ?? null;
@@ -1851,6 +2000,266 @@ export function MapCanvas({
       };
     });
   }, [viewData.connections, viewData.signatures, viewData.map.id, selected, onEndpointContextMenu]);
+
+  // ---- Chain mode derivations + handlers ---------------------------------
+  //
+  // The active chain's generated tree — pure derivation from viewData, re-run
+  // when membership/system/connection state or the orientation changes.
+  const chainModel = useMemo(() => {
+    if (!activeChain) return null;
+    return buildChainCanvas({
+      chainId: activeChain.id,
+      chains: visibleChains,
+      members: viewData.chainMembers,
+      systems: viewData.systems,
+      liveConnectionIds: new Set(viewData.connections.map((c) => c.id)),
+      params: CHAIN_TILE_PARAMS,
+      orientation: chainView.orientation,
+    });
+  }, [
+    activeChain,
+    visibleChains,
+    viewData.chainMembers,
+    viewData.systems,
+    viewData.connections,
+    chainView.orientation,
+  ]);
+
+  // Occurrence tiles reuse the `system` node type with the canonical row's data
+  // (full SystemNode affordances: status ring, presence, sig/intel indicators,
+  // inline alias/tag edit), keyed `chainId:mapSystemId`; selection reflects the
+  // canonical `selectedSystemIds`. Pointer-leaves are non-selectable pills.
+  const chainNodes = useMemo<ChainCanvasNode[]>(() => {
+    if (!chainModel) return [];
+    return [
+      ...chainModel.occurrences.map((o) => ({
+        id: o.id,
+        type: 'system' as const,
+        position: { x: o.x, y: o.y },
+        data: {
+          ...o.system,
+          onAliasOrTagCommit,
+          isHome: o.mapSystemId === viewData.map.homeMapSystemId,
+          inFactionWarfare: intel[o.system.systemId]?.factionWar != null,
+          hasIncursion: intel[o.system.systemId]?.incursion != null,
+          hasNotes: (systemNotes[o.system.systemId] ?? []).length > 0,
+        },
+        selected: selectedSystemIds.has(o.mapSystemId),
+        draggable: false,
+      })),
+      ...chainModel.pointers.map((p) => ({
+        id: p.id,
+        type: 'chainPointer' as const,
+        position: { x: p.x, y: p.y },
+        data: {
+          memberId: p.memberId,
+          targetChainId: p.targetChainId,
+          targetChainName: p.targetChainName,
+          isLoop: p.isLoop,
+          targetMapSystemId: p.targetMapSystemId,
+          targetSystemName: p.targetSystemName,
+        },
+        selectable: false,
+        draggable: false,
+      })),
+    ];
+  }, [
+    chainModel,
+    intel,
+    systemNotes,
+    selectedSystemIds,
+    viewData.map.homeMapSystemId,
+    onAliasOrTagCommit,
+  ]);
+
+  // Tree edges: a live backing connection renders through the real
+  // ConnectionEdge (its id IS the connection id, so edge selection drives the
+  // canonical inspector); a link with no live connection renders as a muted
+  // dashed default edge.
+  const chainEdges = useMemo<Edge[]>(() => {
+    if (!chainModel) return [];
+    const connById = new Map(viewData.connections.map((c) => [c.id, c]));
+    const whByConn = buildWormholeByConnection(viewData.signatures);
+    return chainModel.edges.map((e): Edge => {
+      const conn = e.connectionId != null ? connById.get(e.connectionId) : undefined;
+      if (!conn) {
+        return {
+          id: e.id,
+          source: e.sourceNodeId,
+          target: e.targetNodeId,
+          selectable: false,
+          style: {
+            stroke: 'var(--muted-foreground)',
+            strokeDasharray: '4 4',
+            strokeWidth: 1.5,
+            opacity: 0.5,
+          },
+        };
+      }
+      const wh = whByConn.get(conn.id) ?? null;
+      return {
+        id: e.id,
+        type: 'connection',
+        source: e.sourceNodeId,
+        target: e.targetNodeId,
+        data: {
+          ...conn,
+          mapId: viewData.map.id,
+          wormholeTypeId: wh?.typeId ?? null,
+          wormholeCode: wh?.code ?? null,
+          onEndpointContextMenu,
+        },
+        selected: selected?.kind === 'connection' && selected.id === conn.id,
+      };
+    });
+  }, [
+    chainModel,
+    viewData.connections,
+    viewData.signatures,
+    viewData.map.id,
+    selected,
+    onEndpointContextMenu,
+  ]);
+
+  // Pointer-leaf navigation: switch to the target chain's tab focused on the
+  // target system (a loop stays in the current tab). Selection maps onto the
+  // canonical model so the inspector and sidebar modules follow.
+  const openPointerTarget = useCallback(
+    (p: ChainPointerNodeData) => {
+      if (!p.isLoop && !visibleChains.some((c) => c.id === p.targetChainId)) {
+        toast.info('That chain is not shared with you.');
+        return;
+      }
+      if (!p.isLoop) updateChainView({ activeChainId: p.targetChainId });
+      setSelected({ kind: 'system', id: p.targetMapSystemId });
+      setSelectedSystemIds(new Set([p.targetMapSystemId]));
+      requestChainFocus(p.targetMapSystemId);
+    },
+    [visibleChains, updateChainView, requestChainFocus],
+  );
+
+  // Chain-mode click handlers: occurrence clicks select the CANONICAL system
+  // (the xyflow id is `chainId:mapSystemId`; `data.id` is the map-system id),
+  // so every module keyed on the selection works unchanged.
+  const onChainNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (node.type === 'chainPointer') {
+        openPointerTarget(node.data as ChainPointerNodeData);
+        return;
+      }
+      const mapSystemId = (node.data as SystemNodeData).id;
+      setSelected({ kind: 'system', id: mapSystemId });
+      setSelectedSystemIds(new Set([mapSystemId]));
+    },
+    [openPointerTarget],
+  );
+
+  const onChainEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    // Only live connections are selectable (their edge id is the connection id);
+    // dashed fallback edges carry `chainedge:` ids and `selectable: false`.
+    if (edge.id.startsWith('chainedge:')) return;
+    setSelected({ kind: 'connection', id: edge.id });
+    setSelectedSystemIds(new Set());
+  }, []);
+
+  // Charting a draw inside a chain tab: the same connection POST as the free
+  // canvas, carrying the chain context so the membership write-through accretes
+  // (the `chain.member.added` arrives over realtime).
+  const onChainConnect = useCallback(
+    (params: Connection) => {
+      if (!activeChain || !chainModel) return;
+      const src = chainModel.occurrences.find((o) => o.id === params.source);
+      const tgt = chainModel.occurrences.find((o) => o.id === params.target);
+      if (!src || !tgt || src.mapSystemId === tgt.mapSystemId) return;
+      awaitServer(() =>
+        createConnectionOnServer({
+          mapId,
+          body: {
+            sourceMapSystemId: src.mapSystemId,
+            targetMapSystemId: tgt.mapSystemId,
+            scope: 'wh',
+            chainId: activeChain.id,
+            sourceMemberId: src.memberId,
+          },
+        }),
+      );
+    },
+    [mapId, awaitServer, activeChain, chainModel],
+  );
+
+  const onChainNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    if (node.type !== 'system') return;
+    setContextMenu({
+      kind: 'system',
+      id: (node.data as SystemNodeData).id,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+
+  const onChainEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    if (edge.id.startsWith('chainedge:')) return;
+    setContextMenu({ kind: 'connection', id: edge.id, x: event.clientX, y: event.clientY });
+  }, []);
+
+  // Chain mode has no pane menu (its "Add system here" semantics belong to the
+  // free canvas) — just suppress the native browser menu.
+  const onChainPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent) => {
+    event.preventDefault();
+  }, []);
+
+  // ---- Chain lifecycle (tab strip callbacks) -----------------------------
+  const onChainSelect = useCallback(
+    (chainId: string | null) => {
+      // Drop any stale focus request: a remounting ChainCanvas resets its
+      // applied-token guard, so a leftover request would re-center instead of
+      // letting the fresh tab fit its tree.
+      setChainFocus(null);
+      updateChainView({ activeChainId: chainId });
+    },
+    [updateChainView],
+  );
+
+  const onChainOrientationChange = useCallback(
+    (orientation: ChainLayoutOrientation) => updateChainView({ orientation }),
+    [updateChainView],
+  );
+
+  // Await-then-apply (like `awaitServer`), plus activating the new tab. A
+  // create failure has no optimistic state to reconcile, so no resync.
+  const onChainCreate = useCallback(
+    async (name: string, kind: ChainKind) => {
+      const result = await createChainOnServer({ mapId, name, kind });
+      if (!result.ok) return;
+      appliedEventIds.current.add(result.eventId);
+      setViewData((prev) => applyEvent(prev, result.data));
+      if (result.data.kind === 'chain.created') updateChainView({ activeChainId: result.data.id });
+    },
+    [mapId, updateChainView],
+  );
+
+  const onChainRename = useCallback(
+    (chainId: string, name: string) => {
+      runOptimistic(
+        { kind: 'chain.renamed', eventId: 0, id: chainId, name, updatedAt: new Date().toISOString() },
+        () => renameChainOnServer({ mapId, chainId, name }),
+      );
+    },
+    [mapId, runOptimistic],
+  );
+
+  const onChainDelete = useCallback(
+    (chainId: string) => {
+      const chain = viewData.chains.find((c) => c.id === chainId);
+      runOptimistic({ kind: 'chain.deleted', eventId: 0, id: chainId, name: chain?.name ?? '' }, () =>
+        deleteChainOnServer({ mapId, chainId }),
+      );
+      if (activeChainIdRef.current === chainId) updateChainView({ activeChainId: null });
+    },
+    [mapId, runOptimistic, viewData.chains, updateChainView],
+  );
 
   const selectedSystem: MapSystemNode | null = useMemo(() => {
     if (selected?.kind !== 'system') return null;
@@ -1962,6 +2371,12 @@ export function MapCanvas({
       }
       setSelected({ kind: 'system', id: target.id });
       setSelectedSystemIds(new Set([target.id]));
+      if (activeChainIdRef.current) {
+        // Chain mode: center the occurrence through the chain canvas (no-op
+        // when the system has no occurrence in the open chain).
+        requestChainFocus(target.id);
+        return;
+      }
       const inst = flowInstance.current;
       const node = inst?.getNode(target.id);
       if (inst && node) {
@@ -1973,7 +2388,7 @@ export function MapCanvas({
         });
       }
     },
-    [viewData.systems],
+    [viewData.systems, requestChainFocus],
   );
 
   // Keyboard selection movement: graph-adjacent neighbor in the pressed
@@ -2103,10 +2518,20 @@ export function MapCanvas({
     switch (id) {
       case 'canvas':
         return (
-          <div
-            ref={flowWrapperRef}
-            className="relative h-full overflow-hidden rounded-lg ring-1 ring-foreground/10"
-          >
+          <div className="flex h-full flex-col overflow-hidden rounded-lg ring-1 ring-foreground/10">
+            <ChainTabStrip
+              chains={visibleChains}
+              activeChainId={activeChain?.id ?? null}
+              canManage={canManage}
+              orientation={chainView.orientation}
+              onSelect={onChainSelect}
+              onOrientationChange={onChainOrientationChange}
+              onCreate={onChainCreate}
+              onRename={onChainRename}
+              onDelete={onChainDelete}
+            />
+            {activeChain === null ? (
+            <div ref={flowWrapperRef} className="relative min-h-0 flex-1">
             {selectedSystemIds.size > 1 &&
               deletableSelectedSystemIds.length > 0 &&
               !subchainPreview &&
@@ -2200,8 +2625,8 @@ export function MapCanvas({
               connectionMode={ConnectionMode.Loose}
               edgesFocusable
               colorMode="dark"
-              fitView={initialViewport === null}
-              defaultViewport={initialViewport ?? undefined}
+              fitView={lastViewportRef.current === null}
+              defaultViewport={lastViewportRef.current ?? undefined}
               zoomOnScroll={false}
               preventScrolling={false}
               onMoveEnd={onMoveEnd}
@@ -2210,6 +2635,24 @@ export function MapCanvas({
               <Background />
               <Controls showInteractive={false} />
             </ReactFlow>
+            </div>
+            ) : (
+              <div className="relative min-h-0 flex-1">
+                <ChainCanvas
+                  key={activeChain.id}
+                  nodes={chainNodes}
+                  edges={chainEdges}
+                  focus={chainFocus}
+                  onNodeClick={onChainNodeClick}
+                  onEdgeClick={onChainEdgeClick}
+                  onPaneClick={onPaneClick}
+                  onConnect={onChainConnect}
+                  onNodeContextMenu={onChainNodeContextMenu}
+                  onEdgeContextMenu={onChainEdgeContextMenu}
+                  onPaneContextMenu={onChainPaneContextMenu}
+                />
+              </div>
+            )}
             <MapContextMenu
               target={contextMenu}
               onClose={() => setContextMenu(null)}

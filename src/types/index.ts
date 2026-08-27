@@ -536,6 +536,14 @@ export type {
   ChainBlobContent,
 } from '@/lib/map/chains/collapse';
 
+// Chain-mode canvas derivation view-models (src/lib/map/chains/view.ts).
+export type {
+  ChainOccurrenceNode,
+  ChainPointerLeaf,
+  ChainCanvasEdge,
+  ChainCanvasModel,
+} from '@/lib/map/chains/view';
+
 // Signature mutation input types (src/lib/map/mutations/signatures.ts).
 export type {
   CreateSignatureInput,
