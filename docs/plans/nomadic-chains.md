@@ -30,7 +30,7 @@
 
 ## Stage 2 — Chain lifecycle + membership write-through
 **Mode:** Execute
-**Status:** todo
+**Status:** done — e450c3d
 **Goal:** Chains are creatable/renamable/deletable through guarded routes, memberships accrete automatically as charting happens, and every change fans out as map events.
 **References:** `src/app/api/map/README.md`, `src/lib/map/mutations/systems.md` + `connections.md` + `core.md`, `src/lib/map/applyEvent.md`, `src/lib/auth/rights.md` (`canManageMap` for shared chains).
 **Touches:** new `src/lib/map/mutations/chains.ts` (+ `.md`), new API routes under `src/app/api/map/[mapId]/chains/`, `src/lib/map/mutations/systems.ts` (accept optional `chainId` + source-membership context on create), `src/lib/map/applyEvent.ts`, `src/lib/map/client.ts`, event-kind registry.
