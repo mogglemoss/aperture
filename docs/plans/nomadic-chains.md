@@ -83,7 +83,7 @@
 
 ## Stage 6 — Scale ceiling
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 462f6af
 **Goal:** `MAX_SYSTEMS_PER_MAP` raised (target 1500) with load-path and payload measurements proving the map page, WS fanout, and paste flows hold at that size.
 **References:** `aperture.config.md`, `src/lib/map/loadMap.md`, `src/lib/realtime/bus.md` (8KB pg_notify ceiling patterns). The Stage 5 fixture is in-memory (`tests/unit/chain-forest-view.test.ts`: 30 chains × 33 systems + 10 unassigned = 1000); this stage needs a **DB-seeded** equivalent for the load-path measurement — mirror that shape.
 **Touches:** `aperture.config.ts`, whatever the measurements implicate.
