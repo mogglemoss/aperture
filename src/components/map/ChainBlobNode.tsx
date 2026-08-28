@@ -3,7 +3,8 @@
 import type { NodeProps } from '@xyflow/react';
 import { Flag, Hourglass, Maximize2, Minimize2, User, Users } from 'lucide-react';
 import { formatChainBlobLine } from '@/lib/map/chains/collapse';
-import type { ChainBlobContent, ChainKind } from '@/types';
+import { formatChainDistanceTooltip } from '@/lib/map/chains/distance';
+import type { ChainBlobContent, ChainDistanceBadge, ChainKind } from '@/types';
 
 // All-view LOD nodes (nomadic-chains Stage 5): a collapsed chain's labeled
 // blob, and the caption above an expanded chain block / the "Unassigned" grid.
@@ -17,6 +18,12 @@ export type ChainBlobNodeData = {
   /** False below the zoom cutoff, where the expand override does not apply. */
   expandable: boolean;
   kind: ChainKind;
+  /**
+   * Chains-near-me gate jumps (undefined ⇒ unknown, badge hidden; null ⇒ no
+   * gate-reachable k-space exit, "—"). Derived per render, not part of the
+   * blob content contract.
+   */
+  distance?: ChainDistanceBadge | null;
   onToggleExpand: (chainId: string) => void;
 };
 
@@ -54,6 +61,14 @@ export function ChainBlobNode({ data, selected }: NodeProps & { data: ChainBlobN
       </div>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span>{formatChainBlobLine(content)}</span>
+        {data.distance !== undefined && (
+          <span
+            className="shrink-0 rounded bg-foreground/10 px-1 text-[10px] tabular-nums leading-4"
+            title={formatChainDistanceTooltip(data.distance)}
+          >
+            {data.distance ? `${data.distance.jumps}j` : '—'}
+          </span>
+        )}
         {content.hasRally && (
           <Flag className="size-3.5 shrink-0 text-amber-400" aria-label="Rally point active" />
         )}

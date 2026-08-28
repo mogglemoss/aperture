@@ -11,7 +11,8 @@ import {
   User,
   Users,
 } from 'lucide-react';
-import type { ChainKind, ChainLayoutOrientation, MapChain } from '@/types';
+import type { ChainDistanceBadge, ChainKind, ChainLayoutOrientation, MapChain } from '@/types';
+import { formatChainDistanceTooltip } from '@/lib/map/chains/distance';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -44,6 +45,7 @@ export function ChainTabStrip({
   activeChainId,
   canManage,
   orientation,
+  distances,
   onSelect,
   onOrientationChange,
   onCreate,
@@ -57,6 +59,11 @@ export function ChainTabStrip({
   /** Whether the viewer manages the map — offers the shared kind and shared-chain rename/delete. */
   canManage: boolean;
   orientation: ChainLayoutOrientation;
+  /**
+   * Chains-near-me gate jumps per chain id (undefined ⇒ distances unknown, no
+   * badges; a null value ⇒ no gate-reachable k-space exit, rendered "—").
+   */
+  distances?: Record<string, ChainDistanceBadge | null>;
   onSelect: (chainId: string | null) => void;
   onOrientationChange: (orientation: ChainLayoutOrientation) => void;
   onCreate: (name: string, kind: ChainKind) => void;
@@ -116,6 +123,7 @@ export function ChainTabStrip({
       {chains.map((chain) => {
         const active = chain.id === activeChainId;
         const manageable = chain.kind === 'personal' || canManage;
+        const distance = distances?.[chain.id];
         return (
           <div key={chain.id} className="flex items-center">
             <button
@@ -130,6 +138,14 @@ export function ChainTabStrip({
                 <User className="size-3 shrink-0 opacity-70" />
               )}
               <span className="max-w-40 truncate">{chain.name}</span>
+              {distance !== undefined && (
+                <span
+                  className="shrink-0 rounded bg-foreground/10 px-1 text-[10px] tabular-nums leading-4 text-muted-foreground"
+                  title={formatChainDistanceTooltip(distance)}
+                >
+                  {distance ? `${distance.jumps}j` : '—'}
+                </span>
+              )}
             </button>
             {active && manageable && (
               <Menu>

@@ -548,6 +548,13 @@ export type {
   ChainForestCanvasModel,
 } from '@/lib/map/chains/view';
 
+// Chains-near-me distance types (src/lib/map/chains/distance.ts).
+export type {
+  ChainExitSet,
+  ChainDistances,
+  ChainDistanceBadge,
+} from '@/lib/map/chains/distance';
+
 // Signature mutation input types (src/lib/map/mutations/signatures.ts).
 export type {
   CreateSignatureInput,

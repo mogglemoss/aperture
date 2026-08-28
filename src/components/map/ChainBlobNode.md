@@ -5,10 +5,10 @@
 
 ### ChainBlobNode
 
-Receives xyflow `NodeProps` with `data: ChainBlobNodeData` — `{ content: ChainBlobContent, width, height, expandable, kind, onToggleExpand }`.
+Receives xyflow `NodeProps` with `data: ChainBlobNodeData` — `{ content: ChainBlobContent, width, height, expandable, kind, distance?, onToggleExpand }`. `distance` (`ChainDistanceBadge | null`) is the chains-near-me figure, derived per render — deliberately not part of the `ChainBlobContent` contract; undefined hides the badge, null renders "—".
 
 #### Renders
-A dashed rounded container sized to the chain's block footprint on the `bg-map-node` surface: kind icon (Users = shared, User = personal) + chain name, the `formatChainBlobLine` summary (`34 systems · 5 HS · 2 LS`), a rally flag icon when `content.hasRally` and an hourglass when `content.hasEolCritical`. A `title` tooltip carries name + summary. The selected state accents the border.
+A dashed rounded container sized to the chain's block footprint on the `bg-map-node` surface: kind icon (Users = shared, User = personal) + chain name, the `formatChainBlobLine` summary (`34 systems · 5 HS · 2 LS`) with the "Nj" distance badge beside it (tooltip via `formatChainDistanceTooltip` names the nearest k-space exit), a rally flag icon when `content.hasRally` and an hourglass when `content.hasEolCritical`. A `title` tooltip carries name + summary. The selected state accents the border.
 
 #### Behaviour & Interactions
 - Click select (chain summary in the sidebar) and double-click (open the chain's tab) are handled by `MapCanvas`'s forest node handlers, not here.
@@ -26,4 +26,4 @@ A small muted caption (kind icon + name, truncated at `maxWidth` — the block f
 
 ### Depends On
 - `@xyflow/react` (`NodeProps`), `lucide-react` (`Flag`, `Hourglass`, `Maximize2`, `Minimize2`, `User`, `Users`)
-- `formatChainBlobLine` (`@/lib/map/chains/collapse`), `ChainBlobContent` / `ChainKind` from `@/types`
+- `formatChainBlobLine` (`@/lib/map/chains/collapse`), `formatChainDistanceTooltip` (`@/lib/map/chains/distance`), `ChainBlobContent` / `ChainDistanceBadge` / `ChainKind` from `@/types`

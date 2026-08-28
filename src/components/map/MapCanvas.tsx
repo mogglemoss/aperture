@@ -21,6 +21,8 @@ import { arrayMove } from '@dnd-kit/sortable';
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout';
 import type {
   Breakpoint,
+  ChainDistanceBadge,
+  ChainDistances,
   ChainKind,
   ChainLayoutOrientation,
   ConnectionEnd,
@@ -66,6 +68,7 @@ import {
   deleteSignatureOnServer,
   deleteSubchainOnServer,
   restoreConnectionOnServer,
+  fetchChainDistances,
   fetchMapSnapshot,
   fetchSystemData,
   fetchSystemSignatures,
@@ -256,6 +259,60 @@ function ActiveCharSelector() {
       </Tooltip.Portal>
     </Tooltip.Root>
   );
+}
+
+// Debounce for the chains-near-me refetch on the active pilot's location
+// change (nomadic-chains) — a jump burst collapses into one request. The
+// mount-time fetch fires immediately.
+const CHAIN_DISTANCE_DEBOUNCE_MS = 500;
+
+// Chains-near-me fetcher (nomadic-chains). Must render inside
+// MapActiveCharProvider: the origin pilot is the active character — the same
+// pick the route planner uses — and the effect re-runs when that pilot's
+// presence location changes, so the badges track jumps. Reports the result up
+// via `onDistances` because the consumers (tab strip / forest blobs /
+// inspector) render from MapCanvas state outside this subtree.
+function ChainDistanceBridge({
+  mapId,
+  hasChains,
+  onDistances,
+}: {
+  mapId: string;
+  hasChains: boolean;
+  onDistances: (distances: ChainDistances | null) => void;
+}) {
+  const { activeCharId, activeCharSystemId } = useMapActiveChar();
+  const fetchedOnceRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasChains || activeCharId == null || activeCharSystemId == null) {
+      // No located pilot (or nothing to measure): distances are unknown and
+      // the badges hide. Reset the immediate-fetch latch so a pilot appearing
+      // later doesn't wait out the debounce.
+      fetchedOnceRef.current = false;
+      onDistances(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const result = await fetchChainDistances({ mapId, characterId: activeCharId });
+      if (!cancelled && result.ok) onDistances(result.data);
+    };
+    if (!fetchedOnceRef.current) {
+      fetchedOnceRef.current = true;
+      void run();
+      return () => {
+        cancelled = true;
+      };
+    }
+    const timer = setTimeout(() => void run(), CHAIN_DISTANCE_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mapId, hasChains, activeCharId, activeCharSystemId, onDistances]);
+
+  return null;
 }
 
 // Union two breakpoints' layout arrays by item `i` (incoming wins). RGL only
@@ -680,6 +737,31 @@ export function MapCanvas({
   useEffect(() => {
     activeChainIdRef.current = activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null);
   }, [activeChain, isForestTab]);
+
+  // ---- Chains-near-me distances -------------------------------------------
+  // Fetched by ChainDistanceBridge (active pilot as origin; refetched on mount
+  // and debounced on the pilot's own location change). Null ⇔ unknown.
+  const [chainDistances, setChainDistances] = useState<ChainDistances | null>(null);
+  // Display slice per chain id: jump count + the resolved nearest-exit name
+  // (exit systems are chain members, so they're on the map). Undefined while
+  // distances are unknown — every badge surface hides on undefined.
+  const chainDistanceBadges = useMemo<Record<string, ChainDistanceBadge | null> | undefined>(() => {
+    if (!chainDistances || chainDistances.originSystemId == null) return undefined;
+    const nameBySolarId = new Map(viewData.systems.map((s) => [s.systemId, s.name]));
+    const badges: Record<string, ChainDistanceBadge | null> = {};
+    for (const [chainId, jumps] of Object.entries(chainDistances.distances)) {
+      if (jumps == null) {
+        badges[chainId] = null;
+        continue;
+      }
+      const exitId = chainDistances.nearestExits[chainId];
+      badges[chainId] = {
+        jumps,
+        exitName: exitId != null ? (nameBySolarId.get(exitId) ?? null) : null,
+      };
+    }
+    return badges;
+  }, [chainDistances, viewData.systems]);
 
   // ---- All-view forest state (Stage 5) -----------------------------------
   // Live forest-canvas zoom, re-rendered ONLY when it crosses the blob cutoff
@@ -2397,6 +2479,7 @@ export function MapCanvas({
           height: b.height,
           expandable: b.expandable,
           kind: b.kind,
+          distance: chainDistanceBadges?.[b.chainId],
           onToggleExpand: onToggleChainExpand,
         } satisfies ChainBlobNodeData,
         selected: selected?.kind === 'chain' && selected.id === b.chainId,
@@ -2443,6 +2526,7 @@ export function MapCanvas({
     viewData.map.homeMapSystemId,
     onAliasOrTagCommit,
     onToggleChainExpand,
+    chainDistanceBadges,
   ]);
 
   // Forest edge ids are member-keyed (one connection can back links in several
@@ -2824,6 +2908,7 @@ export function MapCanvas({
               activeChainId={activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null)}
               canManage={canManage}
               orientation={chainView.orientation}
+              distances={chainDistanceBadges}
               onSelect={onChainSelect}
               onOrientationChange={onChainOrientationChange}
               onCreate={onChainCreate}
@@ -3026,6 +3111,7 @@ export function MapCanvas({
           <InspectorModule
             selected={selected}
             viewData={viewData}
+            chainDistances={chainDistanceBadges}
             onSystemPatch={onSystemPatch}
             onSystemRemove={onSystemRemove}
             onConnectionPatch={onConnectionPatch}
@@ -3119,6 +3205,11 @@ export function MapCanvas({
           <TravelBridge systems={viewData.systems} connections={viewData.connections} />
         )}
         <MapUnderglowBridge systems={viewData.systems} />
+        <ChainDistanceBridge
+          mapId={mapId}
+          hasChains={visibleChains.length > 0}
+          onDistances={setChainDistances}
+        />
         <CommandPalette context={paletteContext} />
         <MapHotkeys
           context={paletteContext}

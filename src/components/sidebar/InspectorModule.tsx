@@ -17,6 +17,7 @@ import { Tooltip } from '@base-ui/react/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConnectionMassLog } from '@/components/sidebar/ConnectionMassLog';
 import type {
+  ChainDistanceBadge,
   MapChain,
   MapConnectionEdge,
   MapNote,
@@ -25,6 +26,7 @@ import type {
 } from '@/types';
 import { buildChainBlobContent } from '@/lib/map/chains/view';
 import { formatChainBlobLine } from '@/lib/map/chains/collapse';
+import { formatChainDistanceTooltip } from '@/lib/map/chains/distance';
 import type {
   UpdateConnectionBody,
   UpdateNoteBody,
@@ -63,6 +65,11 @@ export type SelectionRef =
 export function InspectorModule(props: {
   selected: SelectionRef | null;
   viewData: MapViewData;
+  /**
+   * Chains-near-me gate jumps per chain id (undefined ⇒ unknown, the distance
+   * row is omitted; a null value ⇒ no gate-reachable k-space exit, "—").
+   */
+  chainDistances?: Record<string, ChainDistanceBadge | null>;
   onSystemPatch: (mapSystemId: string, patch: UpdateSystemBody) => void;
   onSystemRemove: (mapSystemId: string) => void;
   onConnectionPatch: (connectionId: string, patch: UpdateConnectionBody) => void;
@@ -90,7 +97,14 @@ export function InspectorModule(props: {
   if (selected.kind === 'chain') {
     const chain = viewData.chains.find((c) => c.id === selected.id);
     if (!chain) return <EmptyInspector />;
-    return <ChainInspector key={chain.id} chain={chain} viewData={viewData} />;
+    return (
+      <ChainInspector
+        key={chain.id}
+        chain={chain}
+        viewData={viewData}
+        distance={props.chainDistances?.[chain.id]}
+      />
+    );
   }
 
   if (selected.kind === 'note') {
@@ -137,7 +151,15 @@ function EmptyInspector() {
 // Chain (read-only summary — a blob click's sidebar surface)
 // ---------------------------------------------------------------------------
 
-function ChainInspector({ chain, viewData }: { chain: MapChain; viewData: MapViewData }) {
+function ChainInspector({
+  chain,
+  viewData,
+  distance,
+}: {
+  chain: MapChain;
+  viewData: MapViewData;
+  distance?: ChainDistanceBadge | null;
+}) {
   const content = useMemo(
     () =>
       buildChainBlobContent({
@@ -162,6 +184,9 @@ function ChainInspector({ chain, viewData }: { chain: MapChain; viewData: MapVie
       <CardContent className="flex flex-col gap-1.5 text-xs text-muted-foreground">
         <div>{chain.kind === 'shared' ? 'Shared chain' : 'Personal chain'}</div>
         <div>{formatChainBlobLine(content)}</div>
+        {distance !== undefined && (
+          <div className="text-foreground/80">{formatChainDistanceTooltip(distance ?? null)}</div>
+        )}
         {content.hasRally && (
           <div className="flex items-center gap-1 text-amber-400">
             <Flag className="size-3.5 shrink-0" />

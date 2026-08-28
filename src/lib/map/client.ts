@@ -3,6 +3,7 @@ import type {
   AddSystemResult,
   BulkPasteOptions,
   BulkPasteResult,
+  ChainDistances,
   ChainKind,
   ConnectionMassLogEntry,
   ImportResult,
@@ -647,6 +648,30 @@ export function fetchSystemSignatures(args: {
   return readFetch<MapSignature[]>(
     `/api/map/${args.mapId}/systems/${args.mapSystemId}/signatures`,
   );
+}
+
+/**
+ * Chains-near-me distances (nomadic-chains): gate jumps from the given pilot
+ * (one of the viewer's own characters) to each visible chain's nearest k-space
+ * exit. Read-only (view rights). Uses a bare `fetch` rather than `readFetch` —
+ * this refires in the background on every location change, so a transient
+ * failure must not `toast.error`; the badges just keep their last value.
+ */
+export async function fetchChainDistances(args: {
+  mapId: string;
+  characterId: number;
+}): Promise<FetchResult<ChainDistances>> {
+  try {
+    const res = await fetch(
+      `/api/map/${args.mapId}/chain-distances?characterId=${args.characterId}`,
+      { credentials: 'same-origin' },
+    );
+    const json = (await res.json().catch(() => null)) as FetchResult<ChainDistances> | null;
+    if (!json) return { ok: false, error: `Request failed (${res.status}).` };
+    return json;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Network error.' };
+  }
 }
 
 // ---------------------------------------------------------------------------
