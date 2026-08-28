@@ -91,7 +91,7 @@
 
 ## Stage 7 — Chains-near-me
 **Mode:** Execute
-**Status:** todo
+**Status:** done — a85b710
 **Goal:** Every chain answers "how far is this from me" — the orientation feature Tripwire lacks (Chase Boirelle: "difficult to interpret… where any of them are in relation to you").
 **References:** `src/lib/map/gateGraph.md` (`bfs`, adjacency), `src/lib/map/routePlanner.md` (`getGateGraph` — memoized adjacency; do not reload the edge table), `src/components/map/MapPresenceContext.md` (live pilot locations), Stage 4's tab strip (`src/components/map/ChainTabStrip.tsx` — presentational; props are `{ chains, activeChainId, canManage, orientation, onSelect, onOrientationChange, onCreate, onRename, onDelete }`, each tab renders kind icon + name, so the `Nj` badge is a new per-tab element fed by a new prop, e.g. `distances: Record<chainId, number | null>`) and Stage 5's blob renderer (consumers).
 **Touches:** new `src/lib/map/chains/distance.ts` (+ `.md`), new API route `src/app/api/map/[mapId]/chain-distances/route.ts` (+ `.md`), tab-strip + blob + chain-summary rendering touches, a unit test for the distance reducer.
