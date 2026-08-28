@@ -1,6 +1,6 @@
 ## keyboardActions.ts
 
-**Purpose:** The shared action registry behind the command palette (and the single-key bindings): turns the current selection into the list of invocable actions, each dispatching the exact callback its button counterpart uses. Pure, client-safe; invents no mutation paths.
+**Purpose:** The shared action registry behind the command palette, the single-key bindings, and the mobile node action sheet (via `buildMobileSheetActions`): turns the current selection into the list of invocable actions, each dispatching the exact callback its button counterpart uses. Pure, client-safe; invents no mutation paths.
 **File:** `src/lib/map/keyboardActions.ts`
 
 ---

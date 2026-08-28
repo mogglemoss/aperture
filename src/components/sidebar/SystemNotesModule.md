@@ -39,6 +39,7 @@ A `Card` with a header search button (opens the notes browser) and — when a sy
 ### Exports
 - `SystemNoteFormValues` — `{ body, category, locked }` dialog output.
 - `NOTE_CATEGORIES` / `CategoryChip` — the configured vocabulary and the chip component (shared with the browser dialog).
+- `SystemNoteDialog` — the create/edit dialog (`{ open, onOpenChange, systemName, initial?, onSubmit }`; `initial` present ⇒ edit mode). Also mounted by the mobile `NodeActionSheet` (add mode only).
 
 ### Local State
 - `dialogOpen: boolean`, `editing: SystemNote | null` (null ⇒ add mode), `browserOpen: boolean`, `filter: string | null` (plus the previous system id, so the filter resets during render on system switch).

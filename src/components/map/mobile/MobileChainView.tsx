@@ -16,7 +16,10 @@ import { ConnectionEdge } from '../ConnectionEdge';
 import { ALL_CHAINS_TAB } from '../ChainTabStrip';
 import type { ChainCanvasNode } from '../ChainCanvas';
 import { ChainCardList, ChainDrawer } from './ChainDrawer';
-import type { ChainDistanceBadge, MobileChainCard } from '@/types';
+import { NodeActionSheet } from './NodeActionSheet';
+import type { SystemNoteFormValues } from '@/components/sidebar/SystemNotesModule';
+import type { KeyboardActionContext } from '@/lib/map/keyboardActions';
+import type { ChainDistanceBadge, MapSystemNode, MobileChainCard, SystemNote } from '@/types';
 
 // Phone-width chain mode (nomadic-chains): a full-screen single-chain tree
 // with a bottom-sheet chain drawer, swapped in for the whole dashboard while
@@ -40,6 +43,11 @@ export function MobileChainView({
   onNodeClick,
   onEdgeClick,
   onPaneClick,
+  selectedSystem,
+  sheetContext,
+  selectedSystemNotes,
+  onAddNote,
+  onClearSelection,
 }: {
   /** The open chain's id, or `ALL_CHAINS_TAB` (never null — null is the dashboard). */
   activeChainId: string;
@@ -58,6 +66,16 @@ export function MobileChainView({
   onNodeClick: (event: React.MouseEvent, node: Node) => void;
   onEdgeClick: (event: React.MouseEvent, edge: Edge) => void;
   onPaneClick: () => void;
+  /** The selected canonical system — a tree tap opens the `NodeActionSheet` on it. */
+  selectedSystem: MapSystemNode | null;
+  /** Action context for the sheet: `selectedConnection` is the occurrence's INBOUND connection. */
+  sheetContext: KeyboardActionContext;
+  /** Global system notes for the selected system, newest first. */
+  selectedSystemNotes: SystemNote[];
+  /** Add a note to the selected system. */
+  onAddNote: (values: SystemNoteFormValues) => void;
+  /** Clear the canonical selection (sheet dismissed). */
+  onClearSelection: () => void;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isAll = activeChainId === ALL_CHAINS_TAB;
@@ -134,6 +152,16 @@ export function MobileChainView({
         activeChainId={activeChainId}
         distances={distances}
         onSelect={onSelectChain}
+      />
+      {/* Light charting (Stage 8b): tapping an occurrence opens the action
+          sheet. Gated off on the All card list — a selection lingering from a
+          previous tab must not open a sheet over the cards. */}
+      <NodeActionSheet
+        system={isAll ? null : selectedSystem}
+        context={sheetContext}
+        notes={selectedSystemNotes}
+        onAddNote={onAddNote}
+        onClose={onClearSelection}
       />
     </div>
   );

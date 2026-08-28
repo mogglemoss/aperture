@@ -6,8 +6,20 @@
  * directly.
  */
 
-import type { ChainKind, ChainLayoutParams, MapChain, MapChainMember, MapSystemNode } from '@/types';
-import { buildChainBlobContent } from './view';
+import type {
+  ChainCanvasModel,
+  ChainKind,
+  ChainLayoutParams,
+  MapChain,
+  MapChainMember,
+  MapSystemNode,
+} from '@/types';
+import {
+  buildPaletteActions,
+  type KeyboardActionContext,
+  type PaletteAction,
+} from '@/lib/map/keyboardActions';
+import { buildChainBlobContent, chainOccurrenceNodeId } from './view';
 import { formatChainBlobLine } from './collapse';
 
 /**
@@ -39,6 +51,53 @@ export function isMobileChainView(
   isPhoneViewport: boolean,
 ): boolean {
   return isPhoneViewport && activeChainId !== null;
+}
+
+/**
+ * The inbound connection of a selected occurrence in the open chain: the live
+ * backing connection of the tree edge targeting the selected member. Null when
+ * the selection is the chain's root (no inbound edge), has no occurrence in
+ * the chain, or the inbound via is collapsed/unknown (a dashed fallback edge
+ * carries no live connection to act on).
+ */
+export function resolveInboundConnectionId(
+  model: Pick<ChainCanvasModel, 'chainId' | 'edges'> | null,
+  selectedMapSystemId: string | null,
+): string | null {
+  if (!model || selectedMapSystemId === null) return null;
+  const targetNodeId = chainOccurrenceNodeId(model.chainId, selectedMapSystemId);
+  const inbound = model.edges.find((e) => e.targetNodeId === targetNodeId);
+  return inbound?.connectionId ?? null;
+}
+
+/**
+ * Actions the mobile node action sheet never offers: the destructive
+ * system-remove / connection-delete registry entries. A phone tap sheet is
+ * exactly where a mis-tap wipes a system, so removal stays a desktop
+ * (palette / context-menu) concern — the same reasoning as the no-bare-delete
+ * key invariant.
+ */
+export const MOBILE_SHEET_EXCLUDED_ACTION_IDS: ReadonlySet<string> = new Set([
+  'system-remove',
+  'conn-delete',
+]);
+
+/**
+ * The mobile node action sheet's light-edit set: the shared registry
+ * (`buildPaletteActions` — the sheet is a third invocation surface beside
+ * buttons/palette/keys, dispatching the exact same callbacks) filtered to the
+ * System group plus the Connection group of the context's connection (the
+ * selected occurrence's INBOUND edge — callers build the context with
+ * `selectedConnection` resolved via `resolveInboundConnectionId` rather than
+ * an edge selection), minus the destructive entries. Map-level and
+ * jump-to-system actions are out of the sheet's scope.
+ */
+export function buildMobileSheetActions(ctx: KeyboardActionContext): PaletteAction[] {
+  return buildPaletteActions(ctx).filter(
+    (a) =>
+      (a.group === 'System' || a.group === 'Connection') &&
+      !MOBILE_SHEET_EXCLUDED_ACTION_IDS.has(a.id),
+  );
 }
 
 /** One chain card in the mobile drawer / All card list. */

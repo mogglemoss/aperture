@@ -279,8 +279,11 @@ function relativeTime(iso: string): string {
   return formatAgoFromMs(Date.now() - then, 'long');
 }
 
-/** Create/edit dialog for a global system note. `initial` present ⇒ edit mode. */
-function SystemNoteDialog({
+/**
+ * Create/edit dialog for a global system note. `initial` present ⇒ edit mode.
+ * Also mounted by the mobile `NodeActionSheet` (add mode only).
+ */
+export function SystemNoteDialog({
   open,
   onOpenChange,
   systemName,

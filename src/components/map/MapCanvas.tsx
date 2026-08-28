@@ -61,6 +61,7 @@ import {
   MOBILE_CHAIN_TILE_PARAMS,
   buildMobileChainCards,
   isMobileChainView,
+  resolveInboundConnectionId,
 } from '@/lib/map/chains/mobile';
 import {
   addSystemOnServer,
@@ -2922,6 +2923,24 @@ export function MapCanvas({
     ],
   );
 
+  // Mobile node action sheet (light charting): the same registry the palette
+  // renders, with the selected occurrence's INBOUND chain connection standing
+  // in for an edge selection — a phone user taps nodes, never edges, so the
+  // Connection group operates on the tree edge targeting the selected member.
+  const mobileInboundConnection = useMemo(() => {
+    if (!mobileChainActive) return null;
+    const connectionId = resolveInboundConnectionId(chainModel, selectedSystem?.id ?? null);
+    if (connectionId === null) return null;
+    return viewData.connections.find((c) => c.id === connectionId) ?? null;
+  }, [mobileChainActive, chainModel, selectedSystem, viewData.connections]);
+
+  // The sheet builds its actions from this context itself (the CommandPalette
+  // pattern — the registry runs in the consuming component).
+  const mobileSheetContext = useMemo<KeyboardActionContext>(
+    () => ({ ...paletteContext, selectedConnection: mobileInboundConnection }),
+    [paletteContext, mobileInboundConnection],
+  );
+
   const onSystemNoteDelete = useCallback(
     async (noteId: string) => {
       if (!selectedSystem) return;
@@ -3276,6 +3295,13 @@ export function MapCanvas({
             onNodeClick={onChainNodeClick}
             onEdgeClick={onChainEdgeClick}
             onPaneClick={onPaneClick}
+            selectedSystem={selectedSystem}
+            sheetContext={mobileSheetContext}
+            selectedSystemNotes={
+              selectedSystem ? (systemNotes[selectedSystem.systemId] ?? []) : []
+            }
+            onAddNote={onSystemNoteCreate}
+            onClearSelection={onClearSelection}
           />
         ) : (
         <>

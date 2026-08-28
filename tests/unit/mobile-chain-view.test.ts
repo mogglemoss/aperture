@@ -1,16 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MOBILE_CHAIN_TILE_PARAMS,
+  MOBILE_SHEET_EXCLUDED_ACTION_IDS,
   buildMobileChainCards,
+  buildMobileSheetActions,
   isMobileChainView,
+  resolveInboundConnectionId,
 } from '@/lib/map/chains/mobile';
-import { buildChainBlobContent } from '@/lib/map/chains/view';
+import { buildChainBlobContent, buildChainCanvas } from '@/lib/map/chains/view';
 import { formatChainBlobLine } from '@/lib/map/chains/collapse';
-import type { MapChain, MapChainMember, MapSystemNode } from '@/types';
+import type { KeyboardActionContext } from '@/lib/map/keyboardActions';
+import type { MapChain, MapChainMember, MapConnectionEdge, MapSystemNode } from '@/types';
 
-// Pure checks for the Stage 8a mobile chain view: the phone-breakpoint gate
-// decision, the touch-sized layout params, and the drawer card derivation.
-// No DB, no rendering.
+// Pure checks for the mobile chain view: the phone-breakpoint gate decision,
+// the touch-sized layout params, the drawer card derivation, and the node
+// action sheet's action set + inbound-connection resolution. No DB, no
+// rendering.
 
 const ALL = 'all'; // ChainTabStrip's ALL_CHAINS_TAB sentinel (component import avoided here)
 
@@ -163,5 +168,118 @@ describe('buildMobileChainCards — drawer card derivation', () => {
       criticalConnectionIds: new Set(['c7']),
     });
     expect(cards[0]).toMatchObject({ hasRally: true, hasEolCritical: true });
+  });
+});
+
+function connection(id: string, over: Partial<MapConnectionEdge> = {}): MapConnectionEdge {
+  return {
+    id,
+    source: 's1',
+    target: 's2',
+    scope: 'wh',
+    massStatus: 'fresh',
+    jumpMassClass: null,
+    eolStage: 'none',
+    preserveMass: false,
+    isRolling: false,
+    isStatic: false,
+    sourceBubbled: false,
+    targetBubbled: false,
+    eolAt: null,
+    createdAt: '2026-08-27T00:00:00.000Z',
+    ...over,
+  };
+}
+
+function sheetCtx(overrides: Partial<KeyboardActionContext> = {}): KeyboardActionContext {
+  return {
+    selectedSystem: null,
+    selectedConnection: null,
+    homeMapSystemId: null,
+    systems: [],
+    onSystemPatch: vi.fn(),
+    onSystemRemove: vi.fn(),
+    onConnectionPatch: vi.fn(),
+    onConnectionDelete: vi.fn(),
+    openAddSystem: vi.fn(),
+    jumpToSystem: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe('resolveInboundConnectionId — the sheet\'s inbound-edge resolution', () => {
+  // Root s1, child s2 charted via live connection c9, child s3 whose via is
+  // not live in the view (dashed fallback edge).
+  const model = buildChainCanvas({
+    chainId: '1',
+    chains: [chain('1')],
+    members: [
+      member('1', null),
+      member('2', '1', { viaConnectionId: 'c9' }),
+      member('3', '1', { viaConnectionId: 'c404' }),
+    ],
+    systems: [system('s1'), system('s2'), system('s3')],
+    liveConnectionIds: new Set(['c9']),
+    params: MOBILE_CHAIN_TILE_PARAMS,
+    orientation: 'root-top',
+  });
+
+  it('resolves a child occurrence to its live inbound connection', () => {
+    expect(resolveInboundConnectionId(model, 's2')).toBe('c9');
+  });
+
+  it('is null for the root (no inbound edge)', () => {
+    expect(resolveInboundConnectionId(model, 's1')).toBeNull();
+  });
+
+  it('is null when the inbound via is not live (dashed fallback edge)', () => {
+    expect(resolveInboundConnectionId(model, 's3')).toBeNull();
+  });
+
+  it('is null for a system with no occurrence in the chain, a null selection, or no model', () => {
+    expect(resolveInboundConnectionId(model, 'sX')).toBeNull();
+    expect(resolveInboundConnectionId(model, null)).toBeNull();
+    expect(resolveInboundConnectionId(null, 's2')).toBeNull();
+  });
+});
+
+describe('buildMobileSheetActions — the light-edit set', () => {
+  it('offers status/lock/rally plus inbound EOL/mass, and nothing destructive', () => {
+    const actions = buildMobileSheetActions(
+      sheetCtx({
+        selectedSystem: system('s2'),
+        selectedConnection: connection('c9'),
+        systems: [system('s1'), system('s2')],
+      }),
+    );
+    const ids = actions.map((a) => a.id);
+    expect(ids.filter((id) => id.startsWith('system-status-'))).toHaveLength(5);
+    expect(ids).toContain('system-lock');
+    expect(ids).toContain('system-rally');
+    expect(ids.filter((id) => id.startsWith('conn-eol-'))).toHaveLength(3);
+    expect(ids.filter((id) => id.startsWith('conn-mass-'))).toHaveLength(2);
+    for (const excluded of MOBILE_SHEET_EXCLUDED_ACTION_IDS) {
+      expect(ids).not.toContain(excluded);
+    }
+    // Map-level and jump-to-system actions are out of the sheet's scope.
+    expect(actions.every((a) => a.group === 'System' || a.group === 'Connection')).toBe(true);
+  });
+
+  it('offers no Connection group without an inbound connection (root / dashed via)', () => {
+    const actions = buildMobileSheetActions(sheetCtx({ selectedSystem: system('s1') }));
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.every((a) => a.group === 'System')).toBe(true);
+  });
+
+  it('dispatches the exact registry callbacks — the same server calls as desktop', () => {
+    const ctx = sheetCtx({
+      selectedSystem: system('s2'),
+      selectedConnection: connection('c9'),
+    });
+    const actions = buildMobileSheetActions(ctx);
+    actions.find((a) => a.id === 'system-status-hostile')!.perform();
+    expect(ctx.onSystemPatch).toHaveBeenCalledWith('s2', { status: 'hostile' });
+    actions.find((a) => a.id === 'conn-eol-critical')!.perform();
+    expect(ctx.onConnectionPatch).toHaveBeenCalledWith('c9', { eolStage: 'critical' });
   });
 });
