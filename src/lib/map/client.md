@@ -12,7 +12,7 @@ Each helper returns `ActionResult<MapEventPayload>` — same shape as the route 
 | Type | Used by | Notes |
 |---|---|---|
 | `UpdateSystemBody` | `updateSystemOnServer` | Mirrors `PATCH /api/map/[mapId]/systems/[systemId]` Zod schema. `rallyAt` is an ISO string. |
-| `CreateConnectionBody` | `createConnectionOnServer` | `sourceMapSystemId` / `targetMapSystemId` are `ap_map_system.id` strings (digits). Optional `chainId` + `sourceMemberId` (passed together) chart the draw from a chain member — the membership write-through's `chain.member.added` arrives over realtime, not in the response. |
+| `CreateConnectionBody` | `createConnectionOnServer` | `sourceMapSystemId` / `targetMapSystemId` are `ap_map_system.id` strings (digits). No chain context — a `wh` draw fans chain membership out server-side to every chain holding the source endpoint (the `chain.member.added`s arrive over realtime, not in the response). |
 | `UpdateConnectionBody` | `updateConnectionOnServer` | Includes `isStatic` (designate as the source system's static) and `sourceBubbled`/`targetBubbled` (per-end bubbled markers). |
 | `CreateSignatureBody` | `createSignatureOnServer` | `mapSystemId` digits; `expiresAt` ISO string. |
 | `UpdateSignatureBody` | `updateSignatureOnServer` | `mapConnectionId` digits or null; `expiresAt` optional ISO. |
@@ -22,7 +22,7 @@ Each helper returns `ActionResult<MapEventPayload>` — same shape as the route 
 ---
 
 ### addSystemOnServer({ mapId, systemId, positionX?, positionY?, chainId?, parentMemberId? }): Promise<ActionResult<AddSystemResult>>
-POSTs `/api/map/{mapId}/systems`. Returns `{ payloads }` — the `system.added` event, a `chain.member.added` when `chainId` rides the call (nomadic-chains write-through; `parentMemberId` is the member charted from, omitted for the chain's root), plus any auto-created `stargate` gate links to systems already on the map — so the caller folds `data.payloads` via `onBulkPaste` (wrapper-level `eventId` is always `0`). Drives the manual "add system" dialog (passing a placement `positionX`/`positionY`).
+POSTs `/api/map/{mapId}/systems`. Returns `{ payloads }` — the `system.added` event, the `chain.member.added`s when `chainId` rides the call (nomadic-chains: `parentMemberId` is the member charted from and the add fans out to every chain holding that member's system; omitted for the chain's root, which seeds the anchor's wormhole subtree), plus any auto-created `stargate` gate links to systems already on the map — so the caller folds `data.payloads` via `onBulkPaste` (wrapper-level `eventId` is always `0`). Drives the manual "add system" dialog (passing a placement `positionX`/`positionY`).
 
 ### searchSystemsOnServer({ mapId, query }): Promise<FetchResult<SystemSearchResult[]>>
 GET `/api/map/{mapId}/system-search?q=`. Read-only (view rights) so no `eventId`. Feeds the `AddSystemDialog` autocomplete; the caller debounces and the server returns `[]` for queries under 2 chars.
@@ -42,8 +42,8 @@ PATCH `/api/map/{mapId}/notes/{noteId}`. Update a note's fields. Optimistic (dra
 ### deleteNoteOnServer({ mapId, noteId }): Promise<ActionResult<MapEventPayload>>
 DELETE `/api/map/{mapId}/notes/{noteId}`. Hard-delete a note. Optimistic.
 
-### createChainOnServer({ mapId, name, kind }): Promise<ActionResult<MapEventPayload>>
-POST `/api/map/{mapId}/chains`. Create a chain tab (nomadic-chains). `personal` is open to any viewer; `shared` requires map management (403 otherwise). Returns the `chain.created` payload — await-then-apply.
+### createChainOnServer({ mapId, name, kind, anchorMapSystemId? }): Promise<ActionResult<CreateChainResult>>
+POST `/api/map/{mapId}/chains`. Create a chain tab (nomadic-chains). `personal` is open to any viewer; `shared` requires map management (403 otherwise). Returns `{ payloads }` — the `chain.created` payload first, then, when `anchorMapSystemId` (a visible `ap_map_system.id`) rides the call, the seeded `chain.member.added`s (the anchor becomes the root and its wormhole subtree is adopted in one action) — the caller folds via `onBulkPaste` (wrapper-level `eventId` is `0`).
 
 ### renameChainOnServer({ mapId, chainId, name }) / deleteChainOnServer({ mapId, chainId })
 PATCH / DELETE on `/api/map/{mapId}/chains/{chainId}`. Optimistic. Owner-only for personal chains (a foreign one fails "Chain not found."), management for shared. Deleting a chain removes its memberships — never canonical systems.
@@ -55,7 +55,7 @@ POST. Await-then-apply.
 PATCH / DELETE on `/api/map/{mapId}/connections/{connectionId}`. Optimistic.
 
 ### restoreConnectionOnServer({ mapId, connectionId }): Promise<ActionResult<RestoreConnectionResult>>
-POST `/api/map/{mapId}/connections/{connectionId}/restore` (no body). Re-confirm a dormant wormhole connection and re-activate any hidden endpoint (Stage 4 sig-memory restore). Returns `{ payloads }` (`system.added` per re-activated endpoint, then `connection.create`); the caller iterates `payloads` to register each `eventId` and apply each locally (wrapper-level `eventId` is always `0` — N-events). Used by `MapCanvas`'s restore-connection prompt.
+POST `/api/map/{mapId}/connections/{connectionId}/restore` (no body). Re-confirm a dormant wormhole connection and re-activate any hidden endpoint (Stage 4 sig-memory restore). Returns `{ payloads }` (`system.added` per re-activated endpoint, then `connection.create`, then any `chain.member.added`s from the chain fan-out on the restored pair); the caller iterates `payloads` to register each `eventId` and apply each locally (wrapper-level `eventId` is always `0` — N-events). Used by `MapCanvas`'s restore-connection prompt.
 
 ### fetchConnectionMassLog({ mapId, connectionId }): Promise<FetchResult<ConnectionMassLogEntry[]>>
 GET `/api/map/{mapId}/connections/{connectionId}/mass-log` (view rights). Lists the connection's
@@ -114,5 +114,5 @@ GET `/api/map/{mapId}` (view rights). Returns the full authoritative map snapsho
 
 ### Depends On
 - `sonner` (`toast.error`)
-- Types from `@/types`: `ActionResult`, `AddSystemResult`, `ChainKind`, `MapEventPayload`, `WormholeTypeOption`, `BulkPasteOptions`, `BulkPasteResult`, `ParsedSigRow`, `ResolvedSigRow`, `MapExportFile`, `MapViewData`, `ImportResult`, `TheraConnection`, `TheraSyncInput`, `TheraSyncResult`
+- Types from `@/types`: `ActionResult`, `AddSystemResult`, `ChainKind`, `CreateChainResult`, `MapEventPayload`, `WormholeTypeOption`, `BulkPasteOptions`, `BulkPasteResult`, `ParsedSigRow`, `ResolvedSigRow`, `MapExportFile`, `MapViewData`, `ImportResult`, `TheraConnection`, `TheraSyncInput`, `TheraSyncResult`
 - Enum value types from `@/lib/map/enumLabels`

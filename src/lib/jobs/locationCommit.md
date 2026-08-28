@@ -37,6 +37,6 @@ Each step is its own transaction. A failure between steps leaves a consistent st
 
 ### Notes
 - Self-loop guard (`sourceMapSystemId === targetMapSystemId`) in `ensureConnection` throws with a clear message — the schema's `ap_map_connection_no_self_loop` CHECK would throw anyway, and `ensureConnection` must return a real `connectionId`, so a self-loop can't be silently skipped. Unreachable in practice: the poll only folds when `from != to` system, which yields distinct map-system rows.
-- Imports `commitMapEvent` from `src/lib/map/mutations/core.ts` and `attachChainMemberOnConnection` from `src/lib/map/mutations/chains.ts` (both free of `'server-only'`, direct and transitive — see their `.md`s; this plain-Node worker path crashes on that import). Imports `buildSystemNode` from `src/lib/map/systemNode.ts`.
+- Imports `commitMapEvent` from `src/lib/map/mutations/core.ts` and `attachChainMemberOnConnection` + `chainsHoldingSystem` (the shared holder rule every charting pathway fans out with) from `src/lib/map/mutations/chains.ts` (both modules free of `'server-only'`, direct and transitive — see their `.md`s; this plain-Node worker path crashes on that import). Imports `buildSystemNode` from `src/lib/map/systemNode.ts`.
 - This module is the only place in the location-poll path that writes to `ap_map_*` tables; the poll handler itself is observation-only and delegates here for fan-out.
 - The best-effort auto-tag failure in `tagOnJump` is logged via the structured logger ([[logger]], `source='job'`) at `warn` (stdout only, not persisted).

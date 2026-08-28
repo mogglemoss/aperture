@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapConnection, apMapSystem } from '@/db/schema';
 import { commitMapEvent, type ActionResult } from './core';
+import { fanOutChainMembershipsOnConnection } from './chains';
 import { addSystem } from './systems';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 
@@ -133,6 +134,19 @@ export async function restoreConnection(
       });
       if (!confirm.ok) throw new Error(confirm.error);
       payloads.push(confirm.data);
+
+      // Universal chain fan-out (nomadic-chains): a restore puts the hole —
+      // and possibly its pruned far endpoint — back on the map, so the chains
+      // holding the source side re-accrete the target, exactly as re-charting
+      // it would. Stored source→target is the original charting direction.
+      const memberPayloads = await fanOutChainMembershipsOnConnection(tx, {
+        mapId: input.mapId,
+        characterId: input.characterId,
+        connectionId: conn.id,
+        fromMapSystemId: conn.source,
+        toMapSystemId: conn.target,
+      });
+      payloads.push(...memberPayloads);
 
       return { payloads };
     });

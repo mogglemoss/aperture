@@ -1,8 +1,8 @@
-import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { apMapChain, apMapChainMember, apMapConnection, apMapSystem } from '@/db/schema';
+import { apMapConnection, apMapSystem } from '@/db/schema';
 import { commitMapEvent } from '@/lib/map/mutations/core';
-import { attachChainMemberOnConnection } from '@/lib/map/mutations/chains';
+import { attachChainMemberOnConnection, chainsHoldingSystem } from '@/lib/map/mutations/chains';
 import { buildSystemNode } from '@/lib/map/systemNode';
 import { findOpenPosition, type Point } from '@/lib/map/placement';
 import { assignTagOnAdd, assignTagOnConnect } from '@/lib/tagging/service';
@@ -146,16 +146,18 @@ async function visibleMapSystemId(mapId: bigint, systemId: number): Promise<bigi
  * Fan a tracked jump out to the chains it grows: every chain on the map holding
  * a *real* occurrence of the from-system — shared chains, plus the jumping
  * pilot's own personal chains (a foreign personal chain answers only to its
- * owner, tracking included; the write-path guard would refuse it anyway).
- * Each chain gets the connection-attach semantics of the traversed hole
- * (`attachChainMemberOnConnection`): a tree-adjacent shuttle no-ops after the
- * one-time via backfill, a landing on an unchained system accretes a real child
- * member, a landing on an already-chained system accretes one pointer-leaf per
- * parent. Chains attach in creation order (chain id) so, when several qualify,
- * the earliest gets the real occurrence and the rest point at it — stable
- * across retries. Each attach is its own transaction, matching the fold's
- * per-step pattern: a mid-fan-out failure leaves the completed attaches
- * committed and the retry tick no-ops over them.
+ * owner, tracking included; the write-path guard would refuse it anyway) —
+ * resolved by the shared `chainsHoldingSystem` (the same holder rule every
+ * charting pathway fans out with). Each chain gets the connection-attach
+ * semantics of the traversed hole (`attachChainMemberOnConnection`): a
+ * tree-adjacent shuttle no-ops after the one-time via backfill, a landing on an
+ * unchained system accretes a real child member, a landing on an
+ * already-chained system accretes one pointer-leaf per parent. Chains attach in
+ * creation order (chain id) so, when several qualify, the earliest gets the
+ * real occurrence and the rest point at it — stable across retries. Each
+ * attach is its own transaction, matching the fold's per-step pattern: a
+ * mid-fan-out failure leaves the completed attaches committed and the retry
+ * tick no-ops over them.
  */
 async function attachChainMemberships(args: {
   mapId: bigint;
@@ -164,19 +166,13 @@ async function attachChainMemberships(args: {
   fromMapSystemId: bigint;
   toMapSystemId: bigint;
 }): Promise<void> {
-  const holders = await db
-    .select({ chainId: apMapChain.id, memberId: apMapChainMember.id })
-    .from(apMapChainMember)
-    .innerJoin(apMapChain, eq(apMapChainMember.chainId, apMapChain.id))
-    .where(
-      and(
-        eq(apMapChain.mapId, args.mapId),
-        eq(apMapChainMember.mapSystemId, args.fromMapSystemId),
-        isNull(apMapChainMember.pointerChainId),
-        or(eq(apMapChain.kind, 'shared'), eq(apMapChain.ownerCharacterId, args.characterId)),
-      ),
-    )
-    .orderBy(asc(apMapChain.id));
+  const holders = await db.transaction((tx) =>
+    chainsHoldingSystem(tx, {
+      mapId: args.mapId,
+      mapSystemId: args.fromMapSystemId,
+      actorCharacterId: args.characterId,
+    }),
+  );
 
   for (const holder of holders) {
     await db.transaction((tx) =>

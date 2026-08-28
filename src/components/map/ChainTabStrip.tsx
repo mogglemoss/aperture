@@ -1,15 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowDownFromLine,
   ArrowRightFromLine,
+  Anchor,
   ChevronDown,
   Pencil,
   Plus,
+  Search,
   Trash2,
   User,
   Users,
+  X,
 } from 'lucide-react';
 import type { ChainDistanceBadge, ChainKind, ChainLayoutOrientation, MapChain } from '@/types';
 import { formatChainDistanceTooltip } from '@/lib/map/chains/distance';
@@ -26,12 +29,13 @@ import {
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@/components/ui/menu';
 import { apertureConfig } from '../../../aperture.config';
 
-// Chain tab strip (nomadic-chains): "Free" + "All" + one tab per visible
+// Chain tab strip (nomadic-chains): "Canvas" + "All" + one tab per visible
 // chain, wrapping onto multiple rows at corp scale. The tabs ARE the
-// chain-mode toggle — "Free" (the default) shows the untouched free canvas,
-// "All" the forest render of every visible chain, a chain tab swaps in the
-// ChainCanvas tree. Personal-chain lifecycle is open to anyone; shared chains
-// are offered only to managers (the server re-checks every call).
+// chain-mode toggle — "Canvas" shows the hand-arranged free canvas, "All" the
+// forest render of every visible chain (the default whenever the map has any
+// chain), a chain tab swaps in the ChainCanvas tree. Personal-chain lifecycle
+// is open to anyone; shared chains are offered only to managers (the server
+// re-checks every call).
 
 /**
  * Sentinel tab id for the All-view forest. Safe against chain ids (bigserial
@@ -40,12 +44,25 @@ import { apertureConfig } from '../../../aperture.config';
  */
 export const ALL_CHAINS_TAB = 'all';
 
+/** An on-map system offered as a chain anchor in the create dialog. */
+export type ChainAnchorOption = {
+  /** `ap_map_system.id` as a string. */
+  id: string;
+  name: string;
+  alias: string | null;
+};
+
+/** How many anchor-search matches the create dialog lists. */
+const ANCHOR_RESULT_CAP = 8;
+
 export function ChainTabStrip({
   chains,
   activeChainId,
   canManage,
   orientation,
   distances,
+  systems,
+  defaultAnchorId,
   onSelect,
   onOrientationChange,
   onCreate,
@@ -64,28 +81,61 @@ export function ChainTabStrip({
    * badges; a null value ⇒ no gate-reachable k-space exit, rendered "—").
    */
   distances?: Record<string, ChainDistanceBadge | null>;
+  /** On-map systems offered as anchor candidates in the create dialog. */
+  systems: ChainAnchorOption[];
+  /** Default anchor pick (the creator's current tracked location when it's on the map), or null. */
+  defaultAnchorId: string | null;
   onSelect: (chainId: string | null) => void;
   onOrientationChange: (orientation: ChainLayoutOrientation) => void;
-  onCreate: (name: string, kind: ChainKind) => void;
+  onCreate: (name: string, kind: ChainKind, anchorMapSystemId: string | null) => void;
   onRename: (chainId: string, name: string) => void;
   onDelete: (chainId: string) => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createKind, setCreateKind] = useState<ChainKind>('personal');
+  // Whether the user has typed into the name field — an untouched name follows
+  // the anchor pick (Tripwire-style: the chain is named after its entrance).
+  const [createNameTouched, setCreateNameTouched] = useState(false);
+  const [createAnchor, setCreateAnchor] = useState<ChainAnchorOption | null>(null);
+  const [anchorQuery, setAnchorQuery] = useState('');
   const [renameTarget, setRenameTarget] = useState<MapChain | null>(null);
   const [renameName, setRenameName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<MapChain | null>(null);
 
   const nameMax = apertureConfig.MAP_CHAIN_NAME_MAX_LENGTH;
 
+  const anchorMatches = useMemo(() => {
+    const q = anchorQuery.trim().toLowerCase();
+    if (!q) return [];
+    return systems
+      .filter(
+        (s) => s.name.toLowerCase().includes(q) || (s.alias?.toLowerCase().includes(q) ?? false),
+      )
+      .slice(0, ANCHOR_RESULT_CAP);
+  }, [systems, anchorQuery]);
+
+  const openCreate = () => {
+    const anchor = defaultAnchorId ? (systems.find((s) => s.id === defaultAnchorId) ?? null) : null;
+    setCreateAnchor(anchor);
+    setCreateName(anchor ? anchor.name.slice(0, nameMax) : '');
+    setCreateNameTouched(false);
+    setAnchorQuery('');
+    setCreateKind('personal');
+    setCreateOpen(true);
+  };
+
+  const pickAnchor = (anchor: ChainAnchorOption | null) => {
+    setCreateAnchor(anchor);
+    setAnchorQuery('');
+    if (!createNameTouched) setCreateName(anchor ? anchor.name.slice(0, nameMax) : '');
+  };
+
   const submitCreate = () => {
     const name = createName.trim();
     if (!name) return;
-    onCreate(name, canManage ? createKind : 'personal');
+    onCreate(name, canManage ? createKind : 'personal', createAnchor?.id ?? null);
     setCreateOpen(false);
-    setCreateName('');
-    setCreateKind('personal');
   };
 
   const submitRename = () => {
@@ -110,7 +160,7 @@ export function ChainTabStrip({
         onClick={() => onSelect(null)}
         title="Free canvas — manual layout"
       >
-        Free
+        Canvas
       </button>
       <button
         type="button"
@@ -185,7 +235,7 @@ export function ChainTabStrip({
       <button
         type="button"
         className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-        onClick={() => setCreateOpen(true)}
+        onClick={openCreate}
         title="New chain"
       >
         <Plus className="size-3.5" />
@@ -215,7 +265,7 @@ export function ChainTabStrip({
             <DialogTitle>New chain</DialogTitle>
             <DialogDescription>
               A chain is a named tree of systems layered over the map — charting from its tab grows
-              it.
+              it. Anchoring it on a system adopts that system&apos;s existing wormhole subtree.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -225,12 +275,64 @@ export function ChainTabStrip({
               submitCreate();
             }}
           >
+            {createAnchor ? (
+              <div className="flex h-9 items-center gap-2 rounded-md px-3 text-sm ring-1 ring-foreground/10">
+                <Anchor className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">
+                  {createAnchor.name}
+                  {createAnchor.alias && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">{createAnchor.alias}</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => pickAnchor(null)}
+                  aria-label="Clear anchor"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={anchorQuery}
+                    placeholder="Anchor system (on-map, optional)"
+                    onChange={(e) => setAnchorQuery(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+                {anchorMatches.length > 0 && (
+                  <ul className="max-h-40 overflow-auto rounded-md ring-1 ring-foreground/10">
+                    {anchorMatches.map((s) => (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 border-t border-foreground/10 px-3 py-1.5 text-left text-xs first:border-t-0 hover:bg-muted/40"
+                          onClick={() => pickAnchor(s)}
+                        >
+                          <span className="truncate font-medium text-foreground">{s.name}</span>
+                          {s.alias && (
+                            <span className="truncate text-muted-foreground">{s.alias}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <Input
               autoFocus
               value={createName}
               maxLength={nameMax}
               placeholder="Chain name"
-              onChange={(e) => setCreateName(e.target.value)}
+              onChange={(e) => {
+                setCreateName(e.target.value);
+                setCreateNameTouched(true);
+              }}
             />
             {canManage && (
               <div className="flex gap-1">

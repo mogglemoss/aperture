@@ -11,8 +11,9 @@ A `wh` connection goes **dormant** (`confirmed_at = NULL`, hidden from `loadMapF
 1. Loads the connection by `(connectionId, mapId)`; throws `"Connection not found."` if missing and `"Only wormhole connections can be restored."` if `scope !== 'wh'` (structural links never go dormant).
 2. Re-activates any **hidden** endpoint via `addSystem({ systemId, tx })` (resolving the EVE `system_id` from the endpoint's `ap_map_system` row). Idempotent for an already-visible endpoint; re-add keeps the prior position and (via Stage 1) re-hydrates that system's surviving sigs. Pushes each `system.added` payload.
 3. Re-confirms the connection via `commitMapEvent({ kind: 'connection.create', tx, mutate })`, where `mutate` runs `UPDATE ap_map_connection SET confirmed_at = now() … RETURNING <edge body>` and returns the full edge body (mirrors `createConnection`'s shape). Pushes the `connection.create` payload.
+4. Runs the nomadic-chains universal fan-out on the restored pair (`fanOutChainMembershipsOnConnection`, stored source→target = the original charting direction): every chain holding a real occurrence of the source side re-accretes the target — the memberships a removal pruned come back exactly as re-charting the hole would create them. Pushes each `chain.member.added` payload.
 
-Returns the ordered `MapEventPayload[]` (`system.added`(s) first so the far node exists before the edge folds, then `connection.create`) as `{ ok, data: { payloads }, eventId: 0 }` — the same bulk contract the paste/subchain paths use. We never delete/recreate the row (that would cascade the sig and lose observed state); restore is a `confirmed_at` flip + re-broadcast.
+Returns the ordered `MapEventPayload[]` (`system.added`(s) first so the far node exists before the edge folds, then `connection.create`, then any `chain.member.added`s) as `{ ok, data: { payloads }, eventId: 0 }` — the same bulk contract the paste/subchain paths use. We never delete/recreate the row (that would cascade the sig and lose observed state); restore is a `confirmed_at` flip + re-broadcast.
 
 Re-uses `connection.create` rather than a new event kind — the client `applyEvent` reducer upserts edges by id, so re-broadcasting an existing edge is idempotent. Runs in joined-tx mode throughout, so per-commit webhook enqueue is skipped and nothing is enqueued afterward: a restore is structural memory (like an auto gate-link) and intentionally does not notify.
 
@@ -29,4 +30,5 @@ Input bag (`mapId`, `connectionId`, `characterId`) and result (`{ payloads }`).
 ### Depends On
 - `addSystem` (`./systems`) — re-activates a hidden endpoint, joined to the outer tx.
 - `commitMapEvent` (`./core`) — the single commit primitive (joined-tx mode).
+- `fanOutChainMembershipsOnConnection` (`./chains`) — the chain-membership fan-out on the restored pair.
 - `apMapConnection`, `apMapSystem` (Drizzle schema).

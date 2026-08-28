@@ -14,10 +14,12 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * any auto-created `stargate` connection events (gate links to systems already
  * on the map). Consumers fold `data.payloads` like a bulk paste.
  *
- * `chainId` charts the add into a chain tab (nomadic-chains): a
- * `chain.member.added` commits in the same transaction and rides `payloads`
- * right after the `system.added`. `parentMemberId` is the member charted from
- * (omit for the chain's root; requires `chainId`).
+ * `chainId` charts the add into a chain tab (nomadic-chains): the
+ * `chain.member.added` events commit in the same transaction and ride
+ * `payloads` right after the `system.added`. `parentMemberId` is the member
+ * charted from — the add then fans out to every chain holding that member's
+ * system (universal fan-out); omit it for the chain's root, which seeds the
+ * anchor's wormhole subtree. Requires `chainId`.
  *
  * Access: `map_update` right on the target map.
  */

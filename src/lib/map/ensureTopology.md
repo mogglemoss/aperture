@@ -13,9 +13,9 @@ Ensure `(mapId, systemId)` exists and is visible on the caller's transaction. Up
 ---
 
 ### ensureWhConnection(tx, mapId, sourceMapSystemId, targetMapSystemId, characterId): Promise<EnsureConnectionOutcome>
-Ensure a single `wh`/`fresh` connection links the two `ap_map_system` ids. Skips creation when an edge already links the pair in either direction. Always returns the connection id (existing or freshly created), so callers can link a signature to it.
+Ensure a single `wh`/`fresh` connection links the two `ap_map_system` ids. Skips creation when an edge already links the pair in either direction. Always returns the connection id (existing or freshly created), so callers can link a signature to it. Either way it then runs the nomadic-chains universal fan-out on the pair (`fanOutChainMembershipsOnConnection`; source→target = the charting direction as the caller observed it, independent of any stored row direction): every chain holding a real occurrence of the source system accretes the target, idempotently.
 
-**Returns:** `{ mapConnectionId, payload }` — `payload` is the `connection.create` event when newly created, `null` when the pair was already linked.
+**Returns:** `{ mapConnectionId, payload, memberPayloads }` — `payload` is the `connection.create` event when newly created, `null` when the pair was already linked; `memberPayloads` are the committed `chain.member.added` events (possibly empty).
 
 ---
 
@@ -26,7 +26,7 @@ Post-commit 0121 child-tag follow-up: roots the target under its source and emit
 
 ### Types
 - `EnsureSystemOutcome` — `{ mapSystemId: bigint; payload?: MapEventPayload }`.
-- `EnsureConnectionOutcome` — `{ mapConnectionId: bigint; payload: MapEventPayload | null }`.
+- `EnsureConnectionOutcome` — `{ mapConnectionId: bigint; payload: MapEventPayload | null; memberPayloads: MapEventPayload[] }`.
 
 ### Depends On
-- `commitMapEvent`, `Tx` (`./mutations/core`); `buildSystemNode`; `assignTagOnAdd` / `assignTagOnConnect` (`@/lib/tagging/service`); `apMapSystem` / `apMapConnection` (Drizzle schema).
+- `commitMapEvent`, `Tx` (`./mutations/core`); `fanOutChainMembershipsOnConnection` (`./mutations/chains`); `buildSystemNode`; `assignTagOnAdd` / `assignTagOnConnect` (`@/lib/tagging/service`); `apMapSystem` / `apMapConnection` (Drizzle schema).

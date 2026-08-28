@@ -20,7 +20,7 @@ Fold the chosen connections onto a map. Groups targets by hub; ensures the hub +
 - `characterId` — audit FK (null when actor erased).
 - `connections` — `TheraSyncInput[]` (`{ hubSystemId, hubName, targetSystemId, signatureId? }`).
 
-**Returns:** `ActionResult<{ summary: { systems, connections }; payloads: MapEventPayload[] }>` — the committed event payloads for the client to fold + dedupe (wrapper-level `eventId` is always `0`, like the bulk-paste / import paths).
+**Returns:** `ActionResult<{ summary: { systems, connections }; payloads: MapEventPayload[] }>` — the committed event payloads for the client to fold + dedupe (wrapper-level `eventId` is always `0`, like the bulk-paste / import paths). `payloads` also carries any `chain.member.added` events from the per-pair universal chain fan-out (`ensureWhConnection` — chains holding the hub accrete each exit; `summary` counts systems/connections only).
 
 ---
 

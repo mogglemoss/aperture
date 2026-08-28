@@ -30,8 +30,8 @@ Updates connection flags; only keys present in `input.patch` change (presence vi
 
 ---
 
-### createConnectionWithChainMembership(input, chain: ConnectionChainContext): Promise<ActionResult<MapEventPayload>>
-Orchestrator for the connections POST route: one `db.transaction` running `createConnection` + `attachChainMemberOnConnection` (`./chains`), so the connection and its membership commit atomically (one `connection.create` + at most one `chain.member.added`). Returns the **connection** payload (the route's response shape is unchanged); the member event reaches every client — the initiator included — over realtime. Re-fires `enqueueWebhookDispatch` for the connection event after commit (joined-tx mode skips the per-commit enqueue); the membership event is structural and does not notify webhooks. Lives here rather than in `chains.ts` so that module stays free of `'server-only'` (transitively too) for the plain-Node worker fold.
+### createConnectionWithChainMembership(input): Promise<ActionResult<MapEventPayload>>
+Orchestrator for the connections POST route: one `db.transaction` running `createConnection` + — for `scope === 'wh'` — the universal fan-out (`fanOutChainMembershipsOnConnection`, `./chains`): every chain holding a real occurrence of the SOURCE endpoint accretes the target (source→target = the charting direction), atomically with the create. Non-`wh` scopes accrete no membership — gates must not drag k-space into a tab. Returns the **connection** payload; the member events reach every client — the initiator included — over realtime. Re-fires `enqueueWebhookDispatch` for the connection event after commit (joined-tx mode skips the per-commit enqueue); membership events are structural and do not notify webhooks. Lives here rather than in `chains.ts` so that module stays free of `'server-only'` (transitively too) for the plain-Node worker fold.
 
 ---
 
@@ -40,7 +40,7 @@ Input bags for the helpers. Re-exported from `src/types/index.ts`.
 
 ### Depends On
 - `commitMapEvent`, `enqueueWebhookDispatch` (`./core`) — the single commit primitive + the post-commit webhook enqueue for the orchestrator.
-- `attachChainMemberOnConnection`, `ConnectionChainContext` (`./chains`) — the membership write-through the orchestrator joins.
+- `fanOutChainMembershipsOnConnection` (`./chains`) — the membership fan-out the orchestrator joins.
 - `db` (`@/db/client`) — opens the orchestrator transaction.
 - `apMapConnection` (Drizzle schema).
 - `mapEventPayloadSchema` variants `connection.create` / `connection.delete` / `connection.update` (`@/lib/realtime/protocol`).

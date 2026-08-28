@@ -18,7 +18,7 @@ One tappable card per visible chain: kind icon, name, chains-near-me `Nj` badge 
 
 #### ChainDrawer
 
-The bottom sheet (`Sheet` `side="bottom"`, max 70dvh, scrollable). Above the card list sit two mode rows: **All chains** (`ALL_CHAINS_TAB` — the card-list view) and **Free canvas** (null — leaves the mobile chain view for the stacked dashboard). Every pick closes the sheet before firing `onSelect`.
+The bottom sheet (`Sheet` `side="bottom"`, max 70dvh, scrollable). Above the card list sit two mode rows: **All chains** (`ALL_CHAINS_TAB` — the card-list view) and **Canvas** (null — leaves the mobile chain view for the stacked dashboard's free canvas). Every pick closes the sheet before firing `onSelect`.
 
 | Prop | Type | Required | Description |
 |---|---|---|---|
@@ -26,7 +26,7 @@ The bottom sheet (`Sheet` `side="bottom"`, max 70dvh, scrollable). Above the car
 | cards | MobileChainCard[] | yes | As above. |
 | activeChainId | string | yes | The open chain's id, or `ALL_CHAINS_TAB`. |
 | distances | Record<string, ChainDistanceBadge \| null> | no | As above. |
-| onSelect | (chainId: string \| null) => void | yes | null = Free canvas, `ALL_CHAINS_TAB` = All, else a chain id. |
+| onSelect | (chainId: string \| null) => void | yes | null = the free canvas ("Canvas" row), `ALL_CHAINS_TAB` = All, else a chain id. |
 
 ### Behaviour & Interactions
 - Purely presentational over the callbacks — no fetching, no chain lifecycle (create/rename/delete stay desktop, on the tab strip).

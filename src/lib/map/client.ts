@@ -6,6 +6,7 @@ import type {
   ChainDistances,
   ChainKind,
   ConnectionMassLogEntry,
+  CreateChainResult,
   ImportResult,
   MapEventPayload,
   MapExportFile,
@@ -82,10 +83,6 @@ export type CreateConnectionBody = {
   preserveMass?: boolean;
   isRolling?: boolean;
   isStatic?: boolean;
-  /** Chain tab the draw is charted from (nomadic-chains); pass with `sourceMemberId`. */
-  chainId?: string;
-  /** The chain member on the near end of the draw; pass with `chainId`. */
-  sourceMemberId?: string;
 };
 
 export type UpdateConnectionBody = {
@@ -274,16 +271,25 @@ export function deleteNoteOnServer(args: {
 
 /**
  * Create a chain tab. `personal` chains are open to any viewer; `shared`
- * chains require map management (the route 403s otherwise). Returns the
- * `chain.created` payload — await-then-apply.
+ * chains require map management (the route 403s otherwise). Returns
+ * `{ payloads }` — the `chain.created` payload first, then — when
+ * `anchorMapSystemId` (a visible `ap_map_system.id`) rides the call — the
+ * seeded `chain.member.added` payloads (the anchor becomes the root and its
+ * existing wormhole-connected subtree is adopted in one action). The caller
+ * folds `data.payloads` like a bulk paste (wrapper-level `eventId` is `0`).
  */
 export function createChainOnServer(args: {
   mapId: string;
   name: string;
   kind: ChainKind;
-}): Promise<ActionResult<MapEventPayload>> {
-  const { mapId, ...body } = args;
-  return mutationFetch<MapEventPayload>('POST', `/api/map/${mapId}/chains`, body);
+  anchorMapSystemId?: string | null;
+}): Promise<ActionResult<CreateChainResult>> {
+  const { mapId, anchorMapSystemId, ...rest } = args;
+  const body = {
+    ...rest,
+    ...(anchorMapSystemId ? { anchorMapSystemId } : {}),
+  };
+  return mutationFetch<CreateChainResult>('POST', `/api/map/${mapId}/chains`, body);
 }
 
 /** Rename a chain (owner for personal, map management for shared). Optimistic. */

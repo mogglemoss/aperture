@@ -182,6 +182,7 @@ export async function syncTheraConnections(args: {
             payloads.push(conn.payload);
             connections += 1;
           }
+          payloads.push(...conn.memberPayloads);
           edges.push({ source: hub.mapSystemId, target: target.mapSystemId });
         }
       }

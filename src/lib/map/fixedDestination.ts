@@ -91,6 +91,7 @@ export async function resolveSignatureDestination(args: {
         characterId,
       );
       if (conn.payload) payloads.push(conn.payload);
+      payloads.push(...conn.memberPayloads);
       return { payloads, destMapSystemId: dest.mapSystemId, connectionId: conn.mapConnectionId };
     });
 

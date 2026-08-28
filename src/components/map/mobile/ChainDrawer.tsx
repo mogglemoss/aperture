@@ -103,8 +103,8 @@ export function ChainCardList({
 /**
  * The bottom-sheet chain switcher. Beyond the chain cards it carries the two
  * mode rows: "All chains" (the `ALL_CHAINS_TAB` sentinel — opens the card-list
- * view) and "Free canvas" (null — leaves the mobile chain view for the
- * stacked dashboard).
+ * view) and "Canvas" (null — leaves the mobile chain view for the stacked
+ * dashboard's free canvas).
  */
 export function ChainDrawer({
   open,
@@ -153,7 +153,7 @@ export function ChainDrawer({
               className="border-foreground/10 hover:bg-accent/40 flex min-h-11 w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors"
             >
               <MapIcon className="text-muted-foreground size-4 shrink-0" />
-              Free canvas
+              Canvas
             </button>
           </div>
           <ChainCardList

@@ -3,7 +3,7 @@ import { and, eq, type InferInsertModel } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { apMapConnection, connectionScope, eolStage, whJumpMass, whMass } from '@/db/schema';
 import { commitMapEvent, enqueueWebhookDispatch, type ActionResult, type Tx } from './core';
-import { attachChainMemberOnConnection, type ConnectionChainContext } from './chains';
+import { fanOutChainMembershipsOnConnection } from './chains';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -246,34 +246,36 @@ export function updateConnection(
 }
 
 /**
- * Create a connection and its chain-membership write-through atomically: one
- * transaction, one `connection.create` + at most one `chain.member.added`
- * event. The returned payload is the connection's (the route's response shape
- * is unchanged); the member event reaches every client — the initiator
- * included — over realtime. Re-fires the webhook enqueue for the connection
- * event after commit (joined-tx mode skips the per-commit enqueue); the
- * membership event is structural and does not notify. Lives here rather than
+ * Create a connection and its chain-membership fan-out atomically: one
+ * transaction, one `connection.create` plus — for a `wh` connection — the
+ * universal fan-out (`fanOutChainMembershipsOnConnection`: every chain holding
+ * a real occurrence of the SOURCE endpoint accretes, source→target being the
+ * charting direction; non-`wh` scopes accrete no membership — gates must not
+ * drag k-space into a tab). The returned payload is the connection's (the
+ * route's response shape is unchanged); member events reach every client — the
+ * initiator included — over realtime. Re-fires the webhook enqueue for the
+ * connection event after commit (joined-tx mode skips the per-commit enqueue);
+ * membership events are structural and do not notify. Lives here rather than
  * in `chains.ts` so that module stays importable from the plain-Node worker
  * (this file's `'server-only'` guard is route-territory).
  */
 export async function createConnectionWithChainMembership(
   input: Omit<CreateConnectionInput, 'tx'>,
-  chain: ConnectionChainContext,
 ): Promise<ActionResult<MapEventPayload>> {
   try {
     const { payload, eventId } = await db.transaction(async (tx) => {
       const created = await createConnection({ ...input, tx });
       if (!created.ok) throw new Error(created.error);
       if (created.data.kind !== 'connection.create') throw new Error('Unexpected create payload.');
-      await attachChainMemberOnConnection(tx, {
-        mapId: input.mapId,
-        characterId: input.characterId,
-        chainId: chain.chainId,
-        sourceMemberId: chain.sourceMemberId,
-        connectionId: BigInt(created.data.id),
-        sourceMapSystemId: input.sourceMapSystemId,
-        targetMapSystemId: input.targetMapSystemId,
-      });
+      if (input.scope === 'wh') {
+        await fanOutChainMembershipsOnConnection(tx, {
+          mapId: input.mapId,
+          characterId: input.characterId,
+          connectionId: BigInt(created.data.id),
+          fromMapSystemId: input.sourceMapSystemId,
+          toMapSystemId: input.targetMapSystemId,
+        });
+      }
       return { payload: created.data, eventId: created.eventId };
     });
 

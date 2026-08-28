@@ -18,32 +18,28 @@ import { withApiMetrics } from '@/lib/metrics/httpInstrumentation';
  * Create a connection between two map systems.
  * Returns { ok, data, eventId } — always the `connection.create` payload.
  *
- * `chainId` + `sourceMemberId` chart the draw from a chain member
- * (nomadic-chains): the membership write-through (a real occurrence, or a
- * pointer-leaf when the far side is already chained) commits in the same
- * transaction; its `chain.member.added` reaches every client — the initiator
- * included — over realtime rather than riding this response.
+ * A `wh` connection fans chain membership out automatically (nomadic-chains
+ * universal fan-out): every chain holding a real occurrence of the SOURCE
+ * endpoint accretes (source→target = the charting direction) — a real child,
+ * or a pointer-leaf when the far side is already chained — in the same
+ * transaction; the `chain.member.added` events reach every client — the
+ * initiator included — over realtime rather than riding this response.
+ * Non-`wh` scopes accrete no membership.
  *
  * Access: `map_update` right on the target map.
  */
 
-const createConnectionBodySchema = z
-  .object({
-    sourceMapSystemId: z.string().regex(/^\d+$/),
-    targetMapSystemId: z.string().regex(/^\d+$/),
-    scope: z.enum(connectionScope.enumValues),
-    massStatus: z.enum(whMass.enumValues).optional(),
-    jumpMassClass: z.enum(whJumpMass.enumValues).nullable().optional(),
-    eolStage: z.enum(eolStage.enumValues).optional(),
-    preserveMass: z.boolean().optional(),
-    isRolling: z.boolean().optional(),
-    isStatic: z.boolean().optional(),
-    chainId: z.string().regex(/^\d+$/).optional(),
-    sourceMemberId: z.string().regex(/^\d+$/).optional(),
-  })
-  .refine((b) => (b.chainId === undefined) === (b.sourceMemberId === undefined), {
-    message: 'chainId and sourceMemberId must be passed together.',
-  });
+const createConnectionBodySchema = z.object({
+  sourceMapSystemId: z.string().regex(/^\d+$/),
+  targetMapSystemId: z.string().regex(/^\d+$/),
+  scope: z.enum(connectionScope.enumValues),
+  massStatus: z.enum(whMass.enumValues).optional(),
+  jumpMassClass: z.enum(whJumpMass.enumValues).nullable().optional(),
+  eolStage: z.enum(eolStage.enumValues).optional(),
+  preserveMass: z.boolean().optional(),
+  isRolling: z.boolean().optional(),
+  isStatic: z.boolean().optional(),
+});
 
 export const runtime = 'nodejs';
 
@@ -79,16 +75,6 @@ export const POST = withApiMetrics('/api/map/:mapId/connections', async function
     return Response.json({ ok: false, error: 'Invalid system id.' }, { status: 400 });
   }
 
-  let chain: { chainId: bigint; sourceMemberId: bigint } | undefined;
-  if (parsed.data.chainId !== undefined && parsed.data.sourceMemberId !== undefined) {
-    const chainId = parseBigInt(parsed.data.chainId);
-    const sourceMemberId = parseBigInt(parsed.data.sourceMemberId);
-    if (!chainId || !sourceMemberId) {
-      return Response.json({ ok: false, error: 'Invalid chain context.' }, { status: 400 });
-    }
-    chain = { chainId, sourceMemberId };
-  }
-
   const input = {
     mapId: guard.mapId,
     characterId: guard.characterId,
@@ -102,9 +88,12 @@ export const POST = withApiMetrics('/api/map/:mapId/connections', async function
     isRolling: parsed.data.isRolling,
     isStatic: parsed.data.isStatic,
   };
-  const result = chain
-    ? await createConnectionWithChainMembership(input, chain)
-    : await createConnection(input);
+  // The orchestrator gates the fan-out on `scope === 'wh'` itself; non-wh
+  // creates skip the transaction wrapper entirely.
+  const result =
+    parsed.data.scope === 'wh'
+      ? await createConnectionWithChainMembership(input)
+      : await createConnection(input);
 
   // Auto-tagging: on a 0121 map a new edge may root an untagged
   // child to its now-known parent. Emit the tag as a separate `system.updated`

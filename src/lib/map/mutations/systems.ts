@@ -14,7 +14,11 @@ import { buildSystemNode } from '../systemNode';
 import { assignTagOnAdd } from '@/lib/tagging/service';
 import { commitMapEvent, enqueueWebhookDispatch, type ActionResult, type Tx } from './core';
 import { createConnection } from './connections';
-import { attachChainMemberOnSystemAdd, type SystemAddChainContext } from './chains';
+import {
+  attachChainMemberOnSystemAdd,
+  fanOutChainMembershipsOnSystemAdd,
+  type SystemAddChainContext,
+} from './chains';
 import type { MapEventPatch, MapEventPayload } from '@/lib/realtime/protocol';
 
 /**
@@ -267,10 +271,14 @@ export function updateSystem(input: UpdateSystemInput): Promise<ActionResult<Map
  * stargate edges and so add with zero extra events. A re-added system that
  * already carries `stargate` links to a neighbour is not duplicated.
  *
- * `chain` (nomadic-chains) charts the add into a chain tab: the membership
- * write-through commits a `chain.member.added` in the same transaction, right
- * after the `system.added` (a no-op when the system already really occurs in
- * that chain).
+ * `chain` (nomadic-chains) charts the add into a chain tab, in the same
+ * transaction, right after the `system.added`. A parentless context makes the
+ * add the chain's root and runs the seed walk (the anchor's existing
+ * wormhole-connected subtree is adopted); a parented context fans the add out
+ * to EVERY chain holding a real occurrence of the parent's system — shared
+ * chains plus the actor's own personal chains — with pointer-leaves where the
+ * new system already really occurs elsewhere (universal fan-out; the hinted
+ * chain is only the guard + from-system source, not a propagation limit).
  */
 export async function addSystemWithStargateLinks(
   input: AddSystemInput & { chain?: SystemAddChainContext },
@@ -286,14 +294,26 @@ export async function addSystemWithStargateLinks(
       const newMapSystemId = BigInt(added.data.id);
 
       if (input.chain) {
-        const member = await attachChainMemberOnSystemAdd(tx, {
-          mapId: input.mapId,
-          characterId: input.characterId,
-          chainId: input.chain.chainId,
-          parentMemberId: input.chain.parentMemberId,
-          mapSystemId: newMapSystemId,
-        });
-        if (member) out.push(member);
+        const members =
+          input.chain.parentMemberId === null
+            ? // Root add: the chain gains its anchor (+ the seed walk).
+              await attachChainMemberOnSystemAdd(tx, {
+                mapId: input.mapId,
+                characterId: input.characterId,
+                chainId: input.chain.chainId,
+                parentMemberId: null,
+                mapSystemId: newMapSystemId,
+              })
+            : // Charted from a member: universal fan-out to every chain
+              // holding the parent's system.
+              await fanOutChainMembershipsOnSystemAdd(tx, {
+                mapId: input.mapId,
+                characterId: input.characterId,
+                chainId: input.chain.chainId,
+                parentMemberId: input.chain.parentMemberId,
+                newMapSystemId,
+              });
+        out.push(...members);
       }
 
       // Visible systems on this map that share a stargate with the new one. The

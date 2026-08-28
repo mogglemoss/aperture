@@ -13,7 +13,7 @@ Resolve the fixed destination of the wormhole signature `sigId` onto `mapId`. Lo
 - `sigId` — `ap_map_signature.id` of the wormhole sig to resolve.
 - `characterId` — audit FK (null when actor erased).
 
-**Returns:** `ActionResult<{ payloads, connectionId }>` — the committed event payloads for the client to fold + dedupe (wrapper-level `eventId` is `0`), and the ensured/existing `ap_map_connection.id` so the client can link the signature to it. Fails when the sig isn't on the map, is untyped, its type has no fixed destination, or the destination is the sig's own system.
+**Returns:** `ActionResult<{ payloads, connectionId }>` — the committed event payloads for the client to fold + dedupe (wrapper-level `eventId` is `0`), and the ensured/existing `ap_map_connection.id` so the client can link the signature to it. `payloads` also carries any `chain.member.added` events from the universal chain fan-out (`ensureWhConnection` — chains holding the sig's system accrete the destination). Fails when the sig isn't on the map, is untyped, its type has no fixed destination, or the destination is the sig's own system.
 
 ---
 

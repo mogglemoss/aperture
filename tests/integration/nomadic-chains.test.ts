@@ -29,11 +29,14 @@ import { mapEventPayloadSchema } from '@/lib/realtime/protocol';
  * DB-gated like the rest:
  *   docker compose up -d && pnpm db:migrate && RUN_DB_TESTS=1 pnpm test
  *
- * Nomadic-chains Stage 2: chain lifecycle guards (personal privacy, shared
- * management gating), membership write-through (root/child real occurrences,
- * via backfill, loop + cross-chain pointer-leaves), pruning on system removal
- * (parent-FK cascade) and chain delete (pointer degrade), and the
- * viewer-filtered chain load in `loadMapForView`.
+ * Nomadic-chains: chain lifecycle guards (personal privacy, shared management
+ * gating), membership write-through (root/child real occurrences, via
+ * backfill, loop + cross-chain pointer-leaves — reaching every chain through
+ * the Stage 9 universal fan-out, which resolves the source member from the
+ * connection's source endpoint), pruning on system removal (parent-FK cascade)
+ * and chain delete (pointer degrade), and the viewer-filtered chain load in
+ * `loadMapForView`. Seeding + fan-out parity live in
+ * `nomadic-chains-seeding.test.ts`.
  *
  * Fixture id range claimed by this suite: universe 98048xxx, corp/characters 99061xxx.
  */
@@ -248,7 +251,6 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
   });
 
   it('connection write-through: via backfill, new real member, loop + cross-chain pointer-leaves', async () => {
-    const rootMemberId = await memberIdOf(personalChainId, SA);
     const childMemberId = await memberIdOf(personalChainId, SB);
     const msA = await mapSystemIdOf(SA);
     const msB = await mapSystemIdOf(SB);
@@ -258,7 +260,6 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
     const before = await eventCount();
     const linkAB = await createConnectionWithChainMembership(
       { mapId, characterId: OWNER, sourceMapSystemId: msA, targetMapSystemId: msB, scope: 'wh' },
-      { chainId: personalChainId, sourceMemberId: rootMemberId },
     );
     expect(linkAB.ok).toBe(true);
     if (!linkAB.ok || linkAB.data.kind !== 'connection.create') return;
@@ -276,7 +277,6 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
     const msC = await mapSystemIdOf(SC);
     const linkBC = await createConnectionWithChainMembership(
       { mapId, characterId: OWNER, sourceMapSystemId: msB, targetMapSystemId: msC, scope: 'wh' },
-      { chainId: personalChainId, sourceMemberId: childMemberId },
     );
     expect(linkBC.ok).toBe(true);
     if (!linkBC.ok || linkBC.data.kind !== 'connection.create') return;
@@ -291,7 +291,6 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
     // SC's neighbour) — a loop pointer-leaf, deduped on a repeat draw.
     const linkCA = await createConnectionWithChainMembership(
       { mapId, characterId: OWNER, sourceMapSystemId: msC, targetMapSystemId: msA, scope: 'wh' },
-      { chainId: personalChainId, sourceMemberId: memberC!.id },
     );
     expect(linkCA.ok).toBe(true);
     const loopLeaves = await db
@@ -309,7 +308,6 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
 
     const repeat = await createConnectionWithChainMembership(
       { mapId, characterId: OWNER, sourceMapSystemId: msC, targetMapSystemId: msA, scope: 'wh' },
-      { chainId: personalChainId, sourceMemberId: memberC!.id },
     );
     expect(repeat.ok).toBe(true);
     expect(await memberCount(personalChainId)).toBe(4); // no second loop pill
@@ -328,7 +326,6 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
     const eventsBefore = await eventCount();
     const linkDB = await createConnectionWithChainMembership(
       { mapId, characterId: OTHER, sourceMapSystemId: msD, targetMapSystemId: msB, scope: 'wh' },
-      { chainId: sharedChainId, sourceMemberId: rootD },
     );
     expect(linkDB.ok).toBe(true);
     expect(await eventCount()).toBe(eventsBefore + 2);
@@ -404,10 +401,8 @@ describe.skipIf(!run)('nomadic chains — lifecycle + membership write-through (
 
     const msC = await mapSystemIdOf(SC);
     const msD = await mapSystemIdOf(SD);
-    const rootD = await memberIdOf(sharedChainId, SD);
     const linkDC = await createConnectionWithChainMembership(
       { mapId, characterId: OTHER, sourceMapSystemId: msD, targetMapSystemId: msC, scope: 'wh' },
-      { chainId: sharedChainId, sourceMemberId: rootD },
     );
     expect(linkDC.ok).toBe(true);
     const pointerBefore = await db

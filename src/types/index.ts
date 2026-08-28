@@ -507,10 +507,10 @@ export type {
 // Chain mutation input types (src/lib/map/mutations/chains.ts).
 export type {
   CreateChainInput,
+  CreateChainResult,
   RenameChainInput,
   DeleteChainInput,
   SystemAddChainContext,
-  ConnectionChainContext,
 } from '@/lib/map/mutations/chains';
 
 // Chain-mode forest layout types (src/lib/map/chains/layout.ts).

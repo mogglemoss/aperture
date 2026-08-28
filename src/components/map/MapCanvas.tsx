@@ -279,18 +279,27 @@ const CHAIN_DISTANCE_DEBOUNCE_MS = 500;
 // pick the route planner uses — and the effect re-runs when that pilot's
 // presence location changes, so the badges track jumps. Reports the result up
 // via `onDistances` because the consumers (tab strip / forest blobs /
-// inspector) render from MapCanvas state outside this subtree.
+// inspector) render from MapCanvas state outside this subtree. Also mirrors
+// the active pilot's current solar-system id up via `onActiveCharSystem`
+// (regardless of `hasChains`) — the chain-create dialog defaults its anchor to
+// the creator's tracked location, which must work on a still-chainless map.
 function ChainDistanceBridge({
   mapId,
   hasChains,
   onDistances,
+  onActiveCharSystem,
 }: {
   mapId: string;
   hasChains: boolean;
   onDistances: (distances: ChainDistances | null) => void;
+  onActiveCharSystem: (systemId: number | null) => void;
 }) {
   const { activeCharId, activeCharSystemId } = useMapActiveChar();
   const fetchedOnceRef = useRef(false);
+
+  useEffect(() => {
+    onActiveCharSystem(activeCharSystemId ?? null);
+  }, [activeCharSystemId, onActiveCharSystem]);
 
   useEffect(() => {
     if (!hasChains || activeCharId == null || activeCharSystemId == null) {
@@ -370,9 +379,11 @@ function buildWormholeByConnection(
 }
 
 // Per-map chain-view display preference (nomadic-chains): which tab is active
-// (null = "Free" / free canvas — the default; `ALL_CHAINS_TAB` = the All
-// forest; else a chain id) and which way trees grow. Client-persisted in
-// localStorage beside the viewport pref — a display toggle, no schema.
+// (null = "Canvas" / free canvas; `ALL_CHAINS_TAB` = the All forest — the
+// default whenever the map has any visible chain; else a chain id) and which
+// way trees grow. Client-persisted in localStorage beside the viewport pref —
+// a display toggle, no schema. A stored preference always wins over the
+// default.
 type ChainViewPref = { activeChainId: string | null; orientation: ChainLayoutOrientation };
 const chainViewStorageKey = (mapId: string) => `aperture:map:${mapId}:chainView`;
 
@@ -676,9 +687,12 @@ export function MapCanvas({
   const lastViewportRef = useRef<Viewport | null>(initialViewport);
 
   // ---- Chain mode (nomadic-chains) ---------------------------------------
-  // Which tab is active (null = Free canvas, ALL_CHAINS_TAB = forest, else a
-  // chain id) + tree orientation; a per-user display preference persisted per
-  // map in localStorage.
+  // Which tab is active (null = the "Canvas" free canvas, ALL_CHAINS_TAB =
+  // forest, else a chain id) + tree orientation; a per-user display preference
+  // persisted per map in localStorage. With no stored preference the All
+  // forest is the default whenever the map loads with a chain this viewer can
+  // see (All is the master view for chain-running corps); a chainless map
+  // still lands on the free canvas.
   const [chainView, setChainView] = useState<ChainViewPref>(() => {
     try {
       const raw = localStorage.getItem(chainViewStorageKey(data.map.id));
@@ -692,7 +706,10 @@ export function MapCanvas({
     } catch {
       // fall through to the default
     }
-    return { activeChainId: null, orientation: 'root-top' };
+    const hasVisibleChain = data.chains.some(
+      (c) => c.kind === 'shared' || c.ownerCharacterId === sessionCharacterId,
+    );
+    return { activeChainId: hasVisibleChain ? ALL_CHAINS_TAB : null, orientation: 'root-top' };
   });
   const updateChainView = useCallback(
     (patch: Partial<ChainViewPref>) => {
@@ -738,7 +755,7 @@ export function MapCanvas({
   // The All-view forest tab (`ALL_CHAINS_TAB` sentinel — never a chain id).
   const isForestTab = chainView.activeChainId === ALL_CHAINS_TAB;
   // The stored tab resolved against reality: a stored id naming a vanished
-  // chain resolves to null (= Free). Feeds the tab strip, the mode ref, and
+  // chain resolves to null (= Canvas). Feeds the tab strip, the mode ref, and
   // the mobile gate.
   const resolvedChainTab = activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null);
   // Mirrored into a ref so mode-agnostic callbacks (jump-to-system, sig search)
@@ -761,6 +778,20 @@ export function MapCanvas({
   // Fetched by ChainDistanceBridge (active pilot as origin; refetched on mount
   // and debounced on the pilot's own location change). Null ⇔ unknown.
   const [chainDistances, setChainDistances] = useState<ChainDistances | null>(null);
+  // The active pilot's current solar-system id, mirrored up by
+  // ChainDistanceBridge. Null ⇔ no located pilot. Feeds the chain-create
+  // dialog's default anchor (the creator's tracked location, when on the map).
+  const [activeCharSolarId, setActiveCharSolarId] = useState<number | null>(null);
+  // Anchor candidates for the chain-create dialog: every on-map system, by
+  // canonical map-system id (the seed root is an `ap_map_system` row).
+  const chainAnchorOptions = useMemo(
+    () => viewData.systems.map((s) => ({ id: s.id, name: s.name, alias: s.alias })),
+    [viewData.systems],
+  );
+  const defaultChainAnchorId = useMemo(() => {
+    if (activeCharSolarId === null) return null;
+    return viewData.systems.find((s) => s.systemId === activeCharSolarId)?.id ?? null;
+  }, [activeCharSolarId, viewData.systems]);
   // Display slice per chain id: jump count + the resolved nearest-exit name
   // (exit systems are chain members, so they're on the map). Undefined while
   // distances are unknown — every badge surface hides on undefined.
@@ -1445,11 +1476,14 @@ export function MapCanvas({
   const onAddSystem = useCallback(
     (systemId: number) => {
       const occupied: Point[] = viewData.systems.map((s) => ({ x: s.positionX, y: s.positionY }));
-      // A chain tab is open: the add charts into it (settled design — manual
-      // adds join the active chain). Parent = the selected occurrence's member,
-      // else the chain's root, else the add becomes the root. The free-canvas
-      // position anchors on the parent's canonical spot (the chain-mode
-      // viewport is a different plane, so cursor/viewport anchors don't apply).
+      // A chain tab is open: the add charts from it. Parent = the selected
+      // occurrence's member, else the chain's root, else the add becomes the
+      // root (seeding the anchor's wormhole subtree). The server fans the add
+      // out to every chain holding the parent's system (universal fan-out) —
+      // the context here is the guard + from-system hint, not a propagation
+      // limit. The free-canvas position anchors on the parent's canonical spot
+      // (the chain-mode viewport is a different plane, so cursor/viewport
+      // anchors don't apply).
       if (activeChain) {
         pendingAddPoint.current = null;
         const realMembers = viewData.chainMembers.filter(
@@ -2349,8 +2383,10 @@ export function MapCanvas({
   }, []);
 
   // Charting a draw inside a chain tab: the same connection POST as the free
-  // canvas, carrying the chain context so the membership write-through accretes
-  // (the `chain.member.added` arrives over realtime).
+  // canvas — the server fans membership out to every chain holding the source
+  // system (universal fan-out; the active chain holds it by construction), so
+  // no chain context rides the body. The `chain.member.added`s arrive over
+  // realtime.
   const onChainConnect = useCallback(
     (params: Connection) => {
       if (!activeChain || !chainModel) return;
@@ -2364,8 +2400,6 @@ export function MapCanvas({
             sourceMapSystemId: src.mapSystemId,
             targetMapSystemId: tgt.mapSystemId,
             scope: 'wh',
-            chainId: activeChain.id,
-            sourceMemberId: src.memberId,
           },
         }),
       );
@@ -2419,17 +2453,19 @@ export function MapCanvas({
     [updateChainView],
   );
 
-  // Await-then-apply (like `awaitServer`), plus activating the new tab. A
-  // create failure has no optimistic state to reconcile, so no resync.
+  // Await-then-fold (the bulk-paste pattern — the response carries the
+  // `chain.created` payload plus any seeded `chain.member.added`s when an
+  // anchor was picked), plus activating the new tab. A create failure has no
+  // optimistic state to reconcile, so no resync.
   const onChainCreate = useCallback(
-    async (name: string, kind: ChainKind) => {
-      const result = await createChainOnServer({ mapId, name, kind });
+    async (name: string, kind: ChainKind, anchorMapSystemId: string | null) => {
+      const result = await createChainOnServer({ mapId, name, kind, anchorMapSystemId });
       if (!result.ok) return;
-      appliedEventIds.current.add(result.eventId);
-      setViewData((prev) => applyEvent(prev, result.data));
-      if (result.data.kind === 'chain.created') updateChainView({ activeChainId: result.data.id });
+      onBulkPaste(result.data.payloads);
+      const created = result.data.payloads[0];
+      if (created?.kind === 'chain.created') updateChainView({ activeChainId: created.id });
     },
-    [mapId, updateChainView],
+    [mapId, onBulkPaste, updateChainView],
   );
 
   const onChainRename = useCallback(
@@ -2978,6 +3014,8 @@ export function MapCanvas({
               canManage={canManage}
               orientation={chainView.orientation}
               distances={chainDistanceBadges}
+              systems={chainAnchorOptions}
+              defaultAnchorId={defaultChainAnchorId}
               onSelect={onChainSelect}
               onOrientationChange={onChainOrientationChange}
               onCreate={onChainCreate}
@@ -3278,6 +3316,7 @@ export function MapCanvas({
           mapId={mapId}
           hasChains={visibleChains.length > 0}
           onDistances={setChainDistances}
+          onActiveCharSystem={setActiveCharSolarId}
         />
         {mobileChainActive && resolvedChainTab !== null ? (
           // Phone-width chain mode: the full-screen mobile view replaces the

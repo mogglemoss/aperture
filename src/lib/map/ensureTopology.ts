@@ -6,6 +6,7 @@ import { apMapConnection, apMapSystem } from '@/db/schema';
 import { assignTagOnAdd, assignTagOnConnect } from '@/lib/tagging/service';
 import { getLogger } from '@/lib/log/logger';
 import { commitMapEvent, type Tx } from './mutations/core';
+import { fanOutChainMembershipsOnConnection } from './mutations/chains';
 import { buildSystemNode } from './systemNode';
 import type { MapEventPayload } from '@/lib/realtime/protocol';
 
@@ -77,15 +78,22 @@ export type EnsureConnectionOutcome = {
   mapConnectionId: bigint;
   /** The `connection.create` payload when newly created; null when the pair already linked. */
   payload: MapEventPayload | null;
+  /** Chain-membership fan-out payloads (`chain.member.added`), possibly empty. */
+  memberPayloads: MapEventPayload[];
 };
 
 /**
  * Ensure a single `wh` connection links the two systems. Skips creation when an
  * edge already links the pair in **either direction** (returning that edge's id
  * with a null payload); otherwise inserts a fresh `wh`/`fresh` connection and
- * returns its `connection.create` payload. Throws on a self-loop guard failure
- * only via the caller — a source === target pair is impossible here since the
- * two ids come from distinct systems, but we still short-circuit defensively.
+ * returns its `connection.create` payload. Either way the nomadic-chains
+ * universal fan-out then runs on the pair (source→target = the charting
+ * direction as the caller observed it): every chain holding a real occurrence
+ * of the source system accretes the target, idempotently — its
+ * `chain.member.added` payloads ride `memberPayloads`. Throws on a self-loop
+ * guard failure only via the caller — a source === target pair is impossible
+ * here since the two ids come from distinct systems, but we still
+ * short-circuit defensively.
  */
 export async function ensureWhConnection(
   tx: Tx,
@@ -113,7 +121,16 @@ export async function ensureWhConnection(
       ),
     )
     .limit(1);
-  if (existing) return { mapConnectionId: existing.id, payload: null };
+  if (existing) {
+    const memberPayloads = await fanOutChainMembershipsOnConnection(tx, {
+      mapId,
+      characterId,
+      connectionId: existing.id,
+      fromMapSystemId: sourceMapSystemId,
+      toMapSystemId: targetMapSystemId,
+    });
+    return { mapConnectionId: existing.id, payload: null, memberPayloads };
+  }
 
   let mapConnectionId: bigint | null = null;
   const res = await commitMapEvent({
@@ -173,7 +190,14 @@ export async function ensureWhConnection(
   });
   if (!res.ok) throw new Error(res.error);
   if (mapConnectionId === null) throw new Error('connection.create returned without a connection id');
-  return { mapConnectionId, payload: res.data };
+  const memberPayloads = await fanOutChainMembershipsOnConnection(tx, {
+    mapId,
+    characterId,
+    connectionId: mapConnectionId,
+    fromMapSystemId: sourceMapSystemId,
+    toMapSystemId: targetMapSystemId,
+  });
+  return { mapConnectionId, payload: res.data, memberPayloads };
 }
 
 /**
