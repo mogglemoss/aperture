@@ -106,7 +106,7 @@
 
 ## Stage 8a — Mobile chain view (follow)
 **Mode:** Execute
-**Status:** todo
+**Status:** done — bc7745d
 **Goal:** On a phone-width viewport in chain mode, the map page swaps the dashboard for a full-screen single-chain tree with a chain-switcher drawer — a pilot can follow any chain on a phone.
 **References:** Stage 3's layout module (touch-sized layout params are just different `{nodeW, nodeH, gap}` inputs — desktop uses `CHAIN_TILE_PARAMS` from `src/components/map/ChainCanvas.tsx`), Stage 4's chain render path (`buildChainCanvas` in `src/lib/map/chains/view.ts` is UI-free — the mobile view reuses it with its own params; the mode/tab state is `MapCanvas`'s `chainView` preference, persisted per map in localStorage `aperture:map:<id>:chainView` as `{ activeChainId, orientation }`, where `activeChainId` is null = "Free" canvas, `ALL_CHAINS_TAB` (`'all'`, from `ChainTabStrip`) = the All forest, else a chain id — the mobile drawer's "All" card list maps to the sentinel, and the breakpoint gate reads the same state and forces `root-top` regardless of the stored orientation), `src/lib/map/layout/panels.md` (the `sm` breakpoint story it replaces in chain mode only).
 **Touches:** new `src/components/map/mobile/MobileChainView.tsx` + `ChainDrawer.tsx` (+ companions), a breakpoint gate in the map page/`MapCanvas` (chain mode + `sm` ⇒ mobile view; free-canvas mode keeps today's stacked dashboard untouched).
