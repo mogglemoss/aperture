@@ -124,7 +124,7 @@
 
 ## Stage 9 — Seed on anchor + universal fan-out (true sub-views)
 **Mode:** Execute
-**Status:** todo
+**Status:** done — 91b6a0b
 **Goal:** Personal/shared tabs behave as true sub-views of the one dataset: a new chain anchored at a system adopts its existing wormhole-connected subtree, and all subsequent charting propagates to every tab holding the from-system — chain identity still preserved via pointer-leaves.
 **References:** `src/lib/map/mutations/chains.md` (the attach helpers + their pointer-leaf/loop rules — reuse, don't fork), `connections.md`, `map_connection.md` (`scope`, and source→target = charting direction, the parentage source for seeding), `src/lib/jobs/locationCommit.md` (Stage 2b's fan-out is the semantic model manual charting adopts), the Stage 6 Notes (pg_notify ceiling — a seed of N members must emit batched events or a refetch-shaped event, never one fat payload; the paste flows are the batching precedent).
 **Touches:** `src/lib/map/mutations/chains.ts` (+ seed mutation), `src/lib/map/mutations/systems.ts` / `connections.ts` (fan-out on manual charting), the chain create route (seed on creation), `applyEvent.ts` + client, tests.
