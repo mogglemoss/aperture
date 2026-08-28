@@ -9,7 +9,7 @@
 `number` (currently `2`). Bumped when `MapLayoutConfig`'s stored shape changes incompatibly; gates the `migrateLayout` upgrade of saved layouts.
 
 ### PANEL_BREAKPOINTS
-`Record<Breakpoint, number>` — `{ lg: 1200, md: 768, sm: 0 }`. Min container widths (px) for the responsive grid; shared by the grid component (later stages).
+`Record<Breakpoint, number>` — `{ lg: 1200, md: 768, sm: 0 }`. Min container widths (px) for the responsive grid; shared by the grid component and by `useIsPhoneViewport` (the mobile chain view's window-width phone test keys off the `md` boundary).
 
 ### PANEL_COLS
 `Record<Breakpoint, number>` — `{ lg: 12, md: 8, sm: 4 }`. Column count per breakpoint.

@@ -58,6 +58,11 @@ import {
 import { buildChainCanvas, buildForestCanvas, sortChainsForTabs } from '@/lib/map/chains/view';
 import { CHAIN_BLOB_ZOOM_CUTOFF } from '@/lib/map/chains/collapse';
 import {
+  MOBILE_CHAIN_TILE_PARAMS,
+  buildMobileChainCards,
+  isMobileChainView,
+} from '@/lib/map/chains/mobile';
+import {
   addSystemOnServer,
   createChainOnServer,
   createConnectionOnServer,
@@ -174,6 +179,8 @@ import {
 } from './ChainForestCanvas';
 import type { ChainBlobNodeData, ChainLabelNodeData } from './ChainBlobNode';
 import type { ChainPointerNodeData } from './ChainPointerNode';
+import { MobileChainView } from './mobile/MobileChainView';
+import { useIsPhoneViewport } from './mobile/useIsPhoneViewport';
 import { MapContextMenu } from './MapContextMenu';
 import { SubchainDeletePrompt } from './SubchainDeletePrompt';
 import { RestoreConnectionPrompt } from './RestoreConnectionPrompt';
@@ -729,14 +736,25 @@ export function MapCanvas({
   );
   // The All-view forest tab (`ALL_CHAINS_TAB` sentinel — never a chain id).
   const isForestTab = chainView.activeChainId === ALL_CHAINS_TAB;
+  // The stored tab resolved against reality: a stored id naming a vanished
+  // chain resolves to null (= Free). Feeds the tab strip, the mode ref, and
+  // the mobile gate.
+  const resolvedChainTab = activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null);
   // Mirrored into a ref so mode-agnostic callbacks (jump-to-system, sig search)
   // can branch without re-memoizing on every tab switch. Non-null for a chain
   // tab AND the forest tab — both center through a ChainFocusRequest (the
   // free-canvas flow instance is unmounted in either).
   const activeChainIdRef = useRef<string | null>(null);
   useEffect(() => {
-    activeChainIdRef.current = activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null);
-  }, [activeChain, isForestTab]);
+    activeChainIdRef.current = resolvedChainTab;
+  }, [resolvedChainTab]);
+
+  // ---- Mobile chain view (Stage 8a) --------------------------------------
+  // Phone-width viewport + chain-land ⇒ the full-screen mobile view replaces
+  // the whole dashboard render (toolbar, grid, hotkeys, palette). Free-canvas
+  // mode at phone width keeps the stacked dashboard untouched.
+  const isPhoneViewport = useIsPhoneViewport();
+  const mobileChainActive = isMobileChainView(resolvedChainTab, isPhoneViewport);
 
   // ---- Chains-near-me distances -------------------------------------------
   // Fetched by ChainDistanceBridge (active pilot as origin; refetched on mount
@@ -821,6 +839,11 @@ export function MapCanvas({
   // first call updates local state but must not persist (no spurious write per
   // map open). Subsequent (user-driven) changes save.
   const firstLayoutChange = useRef(true);
+  // The mobile chain view unmounts the grid; re-arm the mount guard so the
+  // grid's remount-time normalization doesn't persist a no-op layout write.
+  useEffect(() => {
+    if (mobileChainActive) firstLayoutChange.current = true;
+  }, [mobileChainActive]);
 
   const saveLayout = useCallback((config: MapLayoutConfig) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -2142,7 +2165,9 @@ export function MapCanvas({
   // ---- Chain mode derivations + handlers ---------------------------------
   //
   // The active chain's generated tree — pure derivation from viewData, re-run
-  // when membership/system/connection state or the orientation changes.
+  // when membership/system/connection state or the orientation changes. The
+  // mobile view is the same derivation with touch-sized params and root-top
+  // forced (phones are portrait; the orientation pref is a desktop concern).
   const chainModel = useMemo(() => {
     if (!activeChain) return null;
     return buildChainCanvas({
@@ -2151,8 +2176,8 @@ export function MapCanvas({
       members: viewData.chainMembers,
       systems: viewData.systems,
       liveConnectionIds: new Set(viewData.connections.map((c) => c.id)),
-      params: CHAIN_TILE_PARAMS,
-      orientation: chainView.orientation,
+      params: mobileChainActive ? MOBILE_CHAIN_TILE_PARAMS : CHAIN_TILE_PARAMS,
+      orientation: mobileChainActive ? 'root-top' : chainView.orientation,
     });
   }, [
     activeChain,
@@ -2161,6 +2186,7 @@ export function MapCanvas({
     viewData.systems,
     viewData.connections,
     chainView.orientation,
+    mobileChainActive,
   ]);
 
   // Occurrence tiles reuse the `system` node type with the canonical row's data
@@ -2257,6 +2283,27 @@ export function MapCanvas({
     viewData.map.id,
     selected,
     onEndpointContextMenu,
+  ]);
+
+  // Drawer / All-list cards for the mobile chain view — the same blob-content
+  // derivation the forest blobs use, so the summaries agree; distance badges
+  // join at render from the shared `chainDistanceBadges` record.
+  const mobileChainCards = useMemo(() => {
+    if (!mobileChainActive) return [];
+    return buildMobileChainCards({
+      chains: visibleChains,
+      members: viewData.chainMembers,
+      systems: viewData.systems,
+      criticalConnectionIds: new Set(
+        viewData.connections.filter((c) => c.eolStage === 'critical').map((c) => c.id),
+      ),
+    });
+  }, [
+    mobileChainActive,
+    visibleChains,
+    viewData.chainMembers,
+    viewData.systems,
+    viewData.connections,
   ]);
 
   // Pointer-leaf navigation: switch to the target chain's tab focused on the
@@ -2413,7 +2460,9 @@ export function MapCanvas({
   // expansion), so pan/zoom stays smooth; the LOD blobs swap in per chain via
   // `shouldCollapseChain` inside `buildForestCanvas`.
   const forestModel = useMemo(() => {
-    if (!isForestTab) return null;
+    // The mobile All tab renders the chain-card list, never the forest — skip
+    // the whole-forest derivation on a phone.
+    if (!isForestTab || mobileChainActive) return null;
     return buildForestCanvas({
       chains: visibleChains,
       members: viewData.chainMembers,
@@ -2432,6 +2481,7 @@ export function MapCanvas({
     });
   }, [
     isForestTab,
+    mobileChainActive,
     visibleChains,
     viewData.chainMembers,
     viewData.systems,
@@ -2905,7 +2955,7 @@ export function MapCanvas({
           <div className="flex h-full flex-col overflow-hidden rounded-lg ring-1 ring-foreground/10">
             <ChainTabStrip
               chains={visibleChains}
-              activeChainId={activeChain?.id ?? (isForestTab ? ALL_CHAINS_TAB : null)}
+              activeChainId={resolvedChainTab}
               canManage={canManage}
               orientation={chainView.orientation}
               distances={chainDistanceBadges}
@@ -3210,6 +3260,25 @@ export function MapCanvas({
           hasChains={visibleChains.length > 0}
           onDistances={setChainDistances}
         />
+        {mobileChainActive && resolvedChainTab !== null ? (
+          // Phone-width chain mode: the full-screen mobile view replaces the
+          // whole dashboard. The tab strip, hotkeys, command palette, and
+          // paste hotkey do not mount; realtime folding and the bridges above
+          // keep running, so the tree and drawer stay live.
+          <MobileChainView
+            activeChainId={resolvedChainTab}
+            chainName={activeChain?.name ?? null}
+            cards={mobileChainCards}
+            distances={chainDistanceBadges}
+            nodes={chainNodes}
+            edges={chainEdges}
+            onSelectChain={onChainSelect}
+            onNodeClick={onChainNodeClick}
+            onEdgeClick={onChainEdgeClick}
+            onPaneClick={onPaneClick}
+          />
+        ) : (
+        <>
         <CommandPalette context={paletteContext} />
         <MapHotkeys
           context={paletteContext}
@@ -3357,6 +3426,8 @@ export function MapCanvas({
           existingSystemIds={existingSystemIds}
           onAdd={onAddSystem}
         />
+        </>
+        )}
         </MapSignatureIndicatorProvider>
         </MapUnderglowProvider>
       </MapTravelProvider>

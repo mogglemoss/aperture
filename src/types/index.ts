@@ -555,6 +555,9 @@ export type {
   ChainDistanceBadge,
 } from '@/lib/map/chains/distance';
 
+// Mobile chain-view types (src/lib/map/chains/mobile.ts).
+export type { MobileChainCard } from '@/lib/map/chains/mobile';
+
 // Signature mutation input types (src/lib/map/mutations/signatures.ts).
 export type {
   CreateSignatureInput,
